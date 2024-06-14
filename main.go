@@ -1,7 +1,9 @@
 package main
 
 import (
+	"ioutil"
 	"log"
+	"net/http"
 	"os"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -41,7 +43,7 @@ func main() {
 			continue
 		}
 
-		log.Printf("Update: [%+v]", update.Message, update.Message.From.ID)
+		log.Printf("Update: [%+v]", update.Message.From.ID)
 
 		userID := update.Message.From.ID
 
@@ -84,4 +86,32 @@ func main() {
 			}
 		}
 	}
+}
+
+func checkVaultStatus() {
+	url := os.Getenv("VAULT_HOST")
+
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", url+"/v1/sys/health", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Error reading response body: %v", err)
+	}
+
+	// Print the response body
+	log.Println(string(body))
+
 }
