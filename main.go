@@ -117,7 +117,7 @@ func pollVaultEverySec(statusChan chan string) {
 				statusChan <- fmt.Sprintf("Vault is down and Will restart soon. Here is the error: %+v", err)
 			}
 			if res.Sealed == true {
-				statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %b and Sealed is %b", res.Initialized, res.Sealed)
+				statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %t and Sealed is %t", res.Initialized, res.Sealed)
 			}
 		}
 	}
