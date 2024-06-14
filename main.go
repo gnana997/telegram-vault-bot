@@ -1,10 +1,13 @@
 package main
 
 import (
-	"ioutil"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/joho/godotenv"
@@ -21,7 +24,8 @@ func main() {
 		log.Panic("TELEGRAM_BOT_TOKEN environment variable not set")
 	}
 
-	allowedUserIDs := make(map[int]bool)
+	statusChan := make(chan string)
+	allowedUserIDs := make(map[int64]bool)
 	allowedUserIDs[664645351] = true
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
@@ -48,7 +52,7 @@ func main() {
 		userID := update.Message.From.ID
 
 		// Check if the user is allowed
-		if !allowedUserIDs[userID] {
+		if !allowedUserIDs[int64(userID)] {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "You are not allowed to use this bot")
 			_, err := bot.Send(msg)
 			if err != nil {
@@ -56,6 +60,8 @@ func main() {
 			}
 			continue
 		}
+
+		go sendVaultStatusUpdate(allowedUserIDs, bot, statusChan)
 
 		if update.Message.IsCommand() {
 			switch update.Message.Command() {
@@ -88,30 +94,70 @@ func main() {
 	}
 }
 
-func checkVaultStatus() {
+func sendVaultStatusUpdate(allowedUserIDs map[int64]bool, bot *tgbotapi.BotAPI, statusChan <-chan string) {
+	for message := range statusChan {
+		for userID := range allowedUserIDs {
+			msg := tgbotapi.NewMessage(userID, message)
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Failed to send message to user ID %d: %v", userID, err)
+			}
+		}
+	}
+}
+
+func pollVaultEverySec(statusChan chan string) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			res, err := checkVaultStatus()
+			if err != nil {
+				statusChan <- fmt.Sprintf("Vault is down and Will restart soon. Here is the error: %+v", err)
+			}
+			if res.Sealed == true {
+				statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %b and Sealed is %b", res.Initialized, res.Sealed)
+			}
+		}
+	}
+}
+
+func checkVaultStatus() (*VaultHealth, error) {
 	url := os.Getenv("VAULT_HOST")
 
 	client := &http.Client{}
 
 	req, err := http.NewRequest("GET", url+"/v1/sys/health", nil)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Fatalf("Error reading response body: %v", err)
 	}
 
 	// Print the response body
 	log.Println(string(body))
+
+	var health *VaultHealth
+	err = json.Unmarshal(body, &health)
+	if err != nil {
+		log.Fatalf("Error unmarshalling response: %v", err)
+	}
+
+	// Print the struct
+	log.Printf("%+v\n", health)
+
+	return health, nil
 
 }
