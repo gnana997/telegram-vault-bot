@@ -15,9 +15,11 @@ import (
 
 func main() {
 	// Use the token provided by BotFather
-	err := godotenv.Load()
-	if err != nil {
-		log.Panic("Error loading .env file")
+	if os.Getenv("LOCAL") == "true" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Panic("Error loading .env file")
+		}
 	}
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if botToken == "" {
