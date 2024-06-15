@@ -44,6 +44,9 @@ func main() {
 
 	updates, err := bot.GetUpdatesChan(u)
 
+	go pollVaultEverySec(statusChan)
+	go sendVaultStatusUpdate(allowedUserIDs, bot, statusChan)
+
 	for update := range updates {
 		if update.Message == nil {
 			continue
@@ -62,8 +65,6 @@ func main() {
 			}
 			continue
 		}
-
-		go sendVaultStatusUpdate(allowedUserIDs, bot, statusChan)
 
 		if update.Message.IsCommand() {
 			switch update.Message.Command() {
@@ -97,11 +98,14 @@ func main() {
 }
 
 func sendVaultStatusUpdate(allowedUserIDs map[int64]bool, bot *tgbotapi.BotAPI, statusChan <-chan string) {
-	for message := range statusChan {
-		for userID := range allowedUserIDs {
-			msg := tgbotapi.NewMessage(userID, message)
-			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send message to user ID %d: %v", userID, err)
+	for {
+		select {
+		case message := <-statusChan:
+			for userID := range allowedUserIDs {
+				msg := tgbotapi.NewMessage(userID, message)
+				if _, err := bot.Send(msg); err != nil {
+					log.Printf("Failed to send message to user ID %d: %v", userID, err)
+				}
 			}
 		}
 	}
@@ -127,6 +131,7 @@ func pollVaultEverySec(statusChan chan string) {
 
 func checkVaultStatus() (*VaultHealth, error) {
 	url := os.Getenv("VAULT_HOST")
+	log.Printf("Url is %s", url)
 
 	client := &http.Client{}
 
