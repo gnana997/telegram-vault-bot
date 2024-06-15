@@ -27,8 +27,8 @@ func main() {
 	}
 
 	statusChan := make(chan string)
-	allowedUserIDs := make(map[int64]bool)
-	allowedUserIDs[664645351] = true
+	allowedUserIDs := make(map[int64]time.Time)
+	allowedUserIDs[664645351] = time.Now().Add(time.Duration(-5) * time.Minute)
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
@@ -57,7 +57,8 @@ func main() {
 		userID := update.Message.From.ID
 
 		// Check if the user is allowed
-		if !allowedUserIDs[int64(userID)] {
+		_, ok := allowedUserIDs[int64(userID)]
+		if ok {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "You are not allowed to use this bot")
 			_, err := bot.Send(msg)
 			if err != nil {
@@ -97,14 +98,16 @@ func main() {
 	}
 }
 
-func sendVaultStatusUpdate(allowedUserIDs map[int64]bool, bot *tgbotapi.BotAPI, statusChan <-chan string) {
+func sendVaultStatusUpdate(allowedUserIDs map[int64]time.Time, bot *tgbotapi.BotAPI, statusChan <-chan string) {
 	for {
 		select {
 		case message := <-statusChan:
-			for userID := range allowedUserIDs {
-				msg := tgbotapi.NewMessage(userID, message)
-				if _, err := bot.Send(msg); err != nil {
-					log.Printf("Failed to send message to user ID %d: %v", userID, err)
+			for userID, t := range allowedUserIDs {
+				if time.Since(t) > 5 {
+					msg := tgbotapi.NewMessage(userID, message)
+					if _, err := bot.Send(msg); err != nil {
+						log.Printf("Failed to send message to user ID %d: %v", userID, err)
+					}
 				}
 			}
 		}
