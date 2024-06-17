@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 )
 
@@ -38,6 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("VAULT_TOTAL_KEYS environment variable not set")
 	}
+	rekeyInProgress := false
 	statusChan := make(chan string)
 	allowedUserIDs := make(map[string]*TelegramUserDetails)
 	allowedUserIDs["dharmendrakariya"] = nil
@@ -52,10 +53,15 @@ func main() {
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	u := tgbotapi.NewUpdate(0)
+	u := tgbotapi.UpdateConfig{
+		Timeout: 60,
+		Offset:  0,
+	}
 	u.Timeout = 60
 
-	updates, err := bot.GetUpdatesChan(u)
+	updates := bot.GetUpdatesChan(u)
+
+	setDefaultCommands(bot)
 
 	go pollVaultEverySec(statusChan)
 	go sendVaultStatusUpdate(allowedUserIDs, bot, statusChan)
@@ -129,7 +135,9 @@ func main() {
 					}
 				}
 			case "rekey_init":
+				rekeyInProgress = true
 				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Rekey process has begun. Please provide unseal key: %d/%d", len(unsealKeys), requiredKeys))
+				setRekeyCommands(bot)
 				bot.Send(msg)
 			case "rekey_token":
 				reKeyToken := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/rekey-token "))
@@ -337,6 +345,8 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, allowedUserIDs map[s
 		}
 	}
 
+	setDefaultCommands(bot)
+
 	return nil
 }
 
@@ -434,4 +444,29 @@ func cancelRekeyProcess() error {
 	}
 
 	return nil
+}
+
+func setDefaultCommands(bot *tgbotapi.BotAPI) {
+	commands := []tgbotapi.BotCommand{
+		{Command: "start", Description: "Start the bot"},
+		{Command: "vault_status", Description: "Get Vault status"},
+		{Command: "help", Description: "Show available commands"},
+		{Command: "unseal", Description: "Provide an unseal key"},
+		{Command: "rekey_init", Description: "Initiate rekey process"},
+	}
+	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+	if err != nil {
+		log.Fatalf("Failed to set commands: %v", err)
+	}
+}
+
+func setRekeyCommands(bot *tgbotapi.BotAPI) {
+	commands := []tgbotapi.BotCommand{
+		{Command: "rekey_token", Description: "Provide rekey token"},
+		{Command: "rekey_cancel", Description: "Cancel rekey process"},
+	}
+	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+	if err != nil {
+		log.Fatalf("Failed to set commands: %v", err)
+	}
 }
