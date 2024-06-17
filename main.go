@@ -40,7 +40,7 @@ func main() {
 	}
 	statusChan := make(chan string)
 	allowedUserIDs := make(map[string]*TelegramUserDetails)
-	allowedUserIDs["dharmendarkariya"] = nil
+	allowedUserIDs["dharmendrakariya"] = nil
 	allowedUserIDs["gnana097"] = nil
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
@@ -65,7 +65,7 @@ func main() {
 			continue
 		}
 
-		log.Printf("Update: [%+v]", update.Message.From.ID)
+		log.Printf("Update: [%+v]", update.Message.From.UserName)
 
 		userID := update.Message.From.UserName
 
@@ -128,10 +128,10 @@ func main() {
 						unsealKeys = []string{}
 					}
 				}
-			case "rekey-init":
+			case "rekey_init":
 				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Rekey process has begun. Please provide unseal key: %d/%d", len(unsealKeys), requiredKeys))
 				bot.Send(msg)
-			case "rekey-token":
+			case "rekey_token":
 				reKeyToken := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/rekey-token "))
 				if reKeyToken == "" {
 					msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received Empty string. Please provide a valid unseal key for Rekey process"))
@@ -155,10 +155,10 @@ func main() {
 						unsealKeys = []string{}
 					}
 				}
-			case "rekey-cancel":
+			case "rekey_cancel":
 				err := cancelRekeyProcess()
 				if err != nil {
-
+					log.Printf("Cancel rekey process failed")
 				}
 			default:
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "I don't know that command")
