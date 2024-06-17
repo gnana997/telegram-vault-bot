@@ -177,7 +177,7 @@ func sendVaultStatusUpdate(allowedUserIDs map[string]*TelegramUserDetails, bot *
 					t.LastUpdated = time.Now()
 					msg := tgbotapi.NewMessage(t.UserId, message)
 					if _, err := bot.Send(msg); err != nil {
-						log.Printf("Failed to send message to user ID %d: %v", userID, err)
+						log.Printf("Failed to send message to user ID %s: %v", userID, err)
 					}
 				}
 			}
@@ -331,10 +331,6 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, allowedUserIDs map[s
 	// Share new keys with allowed users
 	// totalUsers := len(allowedUserIDs)
 	for userName, userDets := range allowedUserIDs {
-		if err != nil {
-			log.Printf("Failed to parse chat ID: %v", err)
-			continue
-		}
 		msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, New keys: %s and your New Base64 Keys: %s", userName, strings.Join(newKeys.Keys, ","), strings.Join(newKeys.KeysBase64, ",")))
 		if _, err := bot.Send(msg); err != nil {
 			log.Printf("Failed to send new keys to chat ID %d: %v", userDets.UserId, err)
