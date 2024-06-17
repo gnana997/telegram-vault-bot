@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 type VaultHealth struct {
 	Initialized                bool   `json:"initialized"`
 	Sealed                     bool   `json:"sealed"`
@@ -14,4 +16,31 @@ type VaultHealth struct {
 	ClusterID                  string `json:"cluster_id"`
 	EchoDurationMs             int64  `json:"echo_duration_ms"`
 	ClockSkewMs                int64  `json:"clock_skew_ms"`
+}
+
+type VaultRekeyProcess struct {
+	Nonce               string `json:"nonce"`
+	Started             string `json:"started"`
+	T                   int64  `json:"t"`
+	N                   int64  `json:"n"`
+	Progress            int64  `json:"progress"`
+	Required            int64  `json:"required"`
+	PGPFingerprints     any    `json:"pgp_fingerprints"`
+	Backup              bool   `json:"backup"`
+	VerficationRequired bool   `json:"verification_required"`
+}
+
+type VaultRekeyUpdatedResponse struct {
+	Nonce               string   `json:"nonce"`
+	Complete            bool     `json:"complete"`
+	Keys                []string `json:"keys"`
+	KeysBase64          []string `json:"keys_base64"`
+	PGPFingerprints     any      `json:"pgp_fingerprints"`
+	Backup              bool     `json:"backup"`
+	VerficationRequired bool     `json:"verification_required"`
+}
+
+type TelegramUserDetails struct {
+	UserId      int64
+	LastUpdated time.Time
 }
