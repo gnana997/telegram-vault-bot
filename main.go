@@ -66,7 +66,7 @@ func main() {
 
 		// Check if the user is allowed
 		_, ok := allowedUserIDs[int64(userID)]
-		if ok {
+		if !ok {
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "You are not allowed to use this bot")
 			_, err := bot.Send(msg)
 			if err != nil {
