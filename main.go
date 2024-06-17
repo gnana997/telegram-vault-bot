@@ -93,14 +93,14 @@ func main() {
 			case "help":
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Available commands: /start, /vault_status, /help")
 				bot.Send(msg)
-			default:
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "I don't know that command")
-				bot.Send(msg)
-			}
-		} else {
-			if update.Message != nil && strings.HasPrefix(update.Message.Text, "/unseal ") {
+			case "unseal":
 				chatId := update.Message.Chat.ID
 				unsealKey := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/unseal "))
+				if unsealKey == "" {
+					msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received Empty string. Please provide a valid unseal key"))
+					bot.Send(msg)
+					continue
+				}
 				unsealKeys = append(unsealKeys, unsealKey)
 				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
 				bot.Send(msg)
@@ -118,6 +118,9 @@ func main() {
 						unsealKeys = []string{}
 					}
 				}
+			default:
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "I don't know that command")
+				bot.Send(msg)
 			}
 		}
 	}
