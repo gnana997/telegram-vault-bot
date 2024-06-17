@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
@@ -26,6 +29,11 @@ func main() {
 		log.Panic("TELEGRAM_BOT_TOKEN environment variable not set")
 	}
 
+	unsealKeys := make([]string, 0)
+	requiredKeys, err := strconv.Atoi(os.Getenv("VAULT_REQUIRED_KEYS"))
+	if err != nil {
+		log.Fatalf("VAULT_REQUIRED_KEYS environment variable not set")
+	}
 	statusChan := make(chan string)
 	allowedUserIDs := make(map[int64]time.Time)
 	allowedUserIDs[664645351] = time.Now().Add(time.Duration(-5) * time.Minute)
@@ -71,28 +79,45 @@ func main() {
 			switch update.Message.Command() {
 			case "start":
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Welcome to the Go Telegram Bot!")
-				_, err := bot.Send(msg)
+				bot.Send(msg)
+			case "vault_status":
+				res, err := checkVaultStatus()
+				statusMsg := ""
 				if err != nil {
-					return
+					statusMsg = fmt.Sprintf("Unable to get the status of the vault. Please try again in sometime. Here is the error: %+v", err)
+				} else {
+					statusMsg = fmt.Sprintf("Here is current status of the vault: Initialised is %t and Sealed is %t", res.Initialized, res.Sealed)
 				}
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, statusMsg)
+				bot.Send(msg)
 			case "help":
-				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Available commands: /start, /help")
-				_, err := bot.Send(msg)
-				if err != nil {
-					return
-				}
+				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Available commands: /start, /vault_status, /help")
+				bot.Send(msg)
 			default:
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "I don't know that command")
-				_, err := bot.Send(msg)
-				if err != nil {
-					return
-				}
+				bot.Send(msg)
 			}
 		} else {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, update.Message.Text)
-			_, err := bot.Send(msg)
-			if err != nil {
-				return
+			if update.Message != nil && strings.HasPrefix(update.Message.Text, "/unseal ") {
+				chatId := update.Message.Chat.ID
+				unsealKey := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/unseal "))
+				unsealKeys = append(unsealKeys, unsealKey)
+				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
+				bot.Send(msg)
+
+				if len(unsealKeys) >= requiredKeys {
+					err := unsealVault(unsealKeys)
+					if err != nil {
+						log.Printf("Error unsealing Vault: %v", err)
+						msg := tgbotapi.NewMessage(chatId, "Error unsealing Vault. Please send the unseal keys again.")
+						bot.Send(msg)
+						unsealKeys = []string{}
+					} else {
+						msg := tgbotapi.NewMessage(chatId, "Vault unsealed successfully.")
+						bot.Send(msg)
+						unsealKeys = []string{}
+					}
+				}
 			}
 		}
 	}
@@ -170,4 +195,34 @@ func checkVaultStatus() (*VaultHealth, error) {
 
 	return health, nil
 
+}
+
+func unsealVault(unsealKeys []string) error {
+	vaultUnsealURL := os.Getenv("VAULT_HOST") + "/v1/sys/unseal"
+
+	for _, unsealKey := range unsealKeys {
+		payload := map[string]string{"key": unsealKey}
+		jsonPayload, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+
+		req, err := http.NewRequest("PUT", vaultUnsealURL, bytes.NewBuffer(jsonPayload))
+		if err != nil {
+			return err
+		}
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("failed to unseal vault, status code: %d", resp.StatusCode)
+		}
+	}
+
+	return nil
 }
