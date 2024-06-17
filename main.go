@@ -450,9 +450,9 @@ func setDefaultCommands(bot *tgbotapi.BotAPI) {
 	commands := []tgbotapi.BotCommand{
 		{Command: "start", Description: "Start the bot"},
 		{Command: "vault_status", Description: "Get Vault status"},
-		{Command: "help", Description: "Show available commands"},
 		{Command: "unseal", Description: "Provide an unseal key"},
 		{Command: "rekey_init", Description: "Initiate rekey process"},
+		{Command: "help", Description: "Show available commands"},
 	}
 	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
 	if err != nil {
@@ -462,8 +462,11 @@ func setDefaultCommands(bot *tgbotapi.BotAPI) {
 
 func setRekeyCommands(bot *tgbotapi.BotAPI) {
 	commands := []tgbotapi.BotCommand{
+		{Command: "start", Description: "Start the bot"},
+		{Command: "vault_status", Description: "Get Vault status"},
 		{Command: "rekey_token", Description: "Provide rekey token"},
 		{Command: "rekey_cancel", Description: "Cancel rekey process"},
+		{Command: "help", Description: "Show available commands"},
 	}
 	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
 	if err != nil {
