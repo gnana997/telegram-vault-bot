@@ -128,7 +128,7 @@ func sendVaultStatusUpdate(allowedUserIDs map[int64]time.Time, bot *tgbotapi.Bot
 		select {
 		case message := <-statusChan:
 			for userID, t := range allowedUserIDs {
-				if time.Since(t) > 5 {
+				if time.Since(t) > 5*time.Minute {
 					allowedUserIDs[userID] = time.Now()
 					msg := tgbotapi.NewMessage(userID, message)
 					if _, err := bot.Send(msg); err != nil {
