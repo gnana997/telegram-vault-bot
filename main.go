@@ -129,6 +129,7 @@ func sendVaultStatusUpdate(allowedUserIDs map[int64]time.Time, bot *tgbotapi.Bot
 		case message := <-statusChan:
 			for userID, t := range allowedUserIDs {
 				if time.Since(t) > 5 {
+					allowedUserIDs[userID] = time.Now()
 					msg := tgbotapi.NewMessage(userID, message)
 					if _, err := bot.Send(msg); err != nil {
 						log.Printf("Failed to send message to user ID %d: %v", userID, err)
@@ -178,7 +179,7 @@ func checkVaultStatus() (*VaultHealth, error) {
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Error reading response body: %v", err)
+		return nil, fmt.Errorf("Error reading response body: %v", err)
 	}
 
 	// Print the response body
@@ -187,7 +188,7 @@ func checkVaultStatus() (*VaultHealth, error) {
 	var health *VaultHealth
 	err = json.Unmarshal(body, &health)
 	if err != nil {
-		log.Fatalf("Error unmarshalling response: %v", err)
+		return nil, fmt.Errorf("Error unmarshalling response: %v", err)
 	}
 
 	// Print the struct
