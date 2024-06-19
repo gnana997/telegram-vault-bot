@@ -1,6 +1,3 @@
-Sure! Here is a README template with the specified fields:
-
----
 
 # Vault Engineer Bot
 
@@ -51,3 +48,5 @@ Feel free to customize this template further based on your specific requirements
 ---
 
 PRs are welcomed
+
+---
