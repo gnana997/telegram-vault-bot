@@ -8,12 +8,26 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
+)
+
+var (
+	rekeyActive         bool
+	rekeyActiveMutex    sync.Mutex
+	unsealKeyFormat     = regexp.MustCompile(`^/unseal\s+"(.+)"$`)
+	rekeyKeyFormat      = regexp.MustCompile(`^/rekey_init_keys\s+"(.+)"$`)
+	unsealKeys          = make(map[string]struct{})
+	rekeyKeys           = make(map[string]struct{})
+	allowedUserIDs      = make(map[string]*TelegramUserDetails)
+	vaultIsUnsealed     bool
+	vaultIsUnsealedLock sync.Mutex
 )
 
 func main() {
@@ -29,7 +43,6 @@ func main() {
 		log.Panic("TELEGRAM_BOT_TOKEN environment variable not set")
 	}
 
-	unsealKeys := make([]string, 0)
 	requiredKeys, err := strconv.Atoi(os.Getenv("VAULT_REQUIRED_KEYS"))
 	if err != nil {
 		log.Fatalf("VAULT_REQUIRED_KEYS environment variable not set")
@@ -38,11 +51,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("VAULT_TOTAL_KEYS environment variable not set")
 	}
-	rekeyInProgress := false
+
+	users := strings.Split(os.Getenv("TELEGRAM_USERS"), ",")
+	if len(users) != totalKeys {
+		log.Fatalf("Number of TELEGRAM_USERS must match VAULT_TOTAL_KEYS")
+	}
+	for _, user := range users {
+		allowedUserIDs[user] = nil
+	}
+
 	statusChan := make(chan string)
-	allowedUserIDs := make(map[string]*TelegramUserDetails)
-	allowedUserIDs["dharmendrakariya"] = nil
-	allowedUserIDs["gnana097"] = nil
 
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
@@ -53,10 +71,7 @@ func main() {
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	u := tgbotapi.UpdateConfig{
-		Timeout: 60,
-		Offset:  0,
-	}
+	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
@@ -64,10 +79,10 @@ func main() {
 	setDefaultCommands(bot)
 
 	go pollVaultEverySec(statusChan)
-	go sendVaultStatusUpdate(allowedUserIDs, bot, statusChan)
+	go sendVaultStatusUpdate(bot, statusChan)
 
 	for update := range updates {
-		if update.Message == nil {
+		if update.Message == nil || update.Message.EditDate != 0 {
 			continue
 		}
 
@@ -95,7 +110,7 @@ func main() {
 			chatId := update.Message.Chat.ID
 			switch update.Message.Command() {
 			case "start":
-				msg := tgbotapi.NewMessage(chatId, "Welcome to the Go Telegram Bot!")
+				msg := tgbotapi.NewMessage(chatId, "Welcome to the Vault Engineer Bot!")
 				bot.Send(msg)
 			case "vault_status":
 				res, err := checkVaultStatus()
@@ -108,84 +123,182 @@ func main() {
 				msg := tgbotapi.NewMessage(chatId, statusMsg)
 				bot.Send(msg)
 			case "help":
-				msg := tgbotapi.NewMessage(chatId, "Available commands: /start, /vault_status, /help")
+				msg := tgbotapi.NewMessage(chatId, "Available commands: /start, /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel")
 				bot.Send(msg)
 			case "unseal":
-				unsealKey := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/unseal "))
-				if unsealKey == "" {
-					msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received Empty string. Please provide a valid unseal key"))
+				vaultIsUnsealedLock.Lock()
+				if vaultIsUnsealed {
+					msg := tgbotapi.NewMessage(chatId, "The vault is already unsealed.")
+					bot.Send(msg)
+					vaultIsUnsealedLock.Unlock()
+					continue
+				}
+				vaultIsUnsealedLock.Unlock()
+
+				if _, exists := unsealKeys[userID]; exists {
+					msg := tgbotapi.NewMessage(chatId, "You have already provided an unseal key.")
 					bot.Send(msg)
 					continue
 				}
-				unsealKeys = append(unsealKeys, unsealKey)
+				match := unsealKeyFormat.FindStringSubmatch(update.Message.Text)
+				if len(match) != 2 {
+					msg := tgbotapi.NewMessage(chatId, "Invalid unseal key format. Please provide a valid unseal key in the format: /unseal \"key\".")
+					bot.Send(msg)
+					continue
+				}
+				unsealKey := match[1]
+				unsealKeys[unsealKey] = struct{}{}
 				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
 				bot.Send(msg)
 
 				if len(unsealKeys) >= requiredKeys {
-					err := unsealVault(unsealKeys)
+					keys := make([]string, 0, len(unsealKeys))
+					for key := range unsealKeys {
+						keys = append(keys, key)
+					}
+					err := unsealVault(keys)
 					if err != nil {
 						log.Printf("Error unsealing Vault: %v", err)
 						msg := tgbotapi.NewMessage(chatId, "Error unsealing Vault. Please send the unseal keys again.")
 						bot.Send(msg)
-						unsealKeys = []string{}
+						unsealKeys = make(map[string]struct{})
 					} else {
 						msg := tgbotapi.NewMessage(chatId, "Vault unsealed successfully.")
-						bot.Send(msg)
-						unsealKeys = []string{}
+						broadcastMessage(bot, msg.Text)
+						// Check vault status to ensure it is actually unsealed
+						go verifyVaultUnseal(bot, chatId)
+						unsealKeys = make(map[string]struct{})
 					}
 				}
 			case "rekey_init":
-				rekeyInProgress = true
-				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Rekey process has begun. Please provide unseal key: %d/%d", len(unsealKeys), requiredKeys))
+				rekeyActiveMutex.Lock()
+				if rekeyActive {
+					msg := tgbotapi.NewMessage(chatId, "Rekey process is already active. Please provide your unseal key using /rekey_init_keys.")
+					bot.Send(msg)
+					rekeyActiveMutex.Unlock()
+					continue
+				}
+				rekeyActive = true
+				rekeyActiveMutex.Unlock()
+
+				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Rekey process has begun. Please provide unseal key using /rekey_init_keys \"key\": %d/%d", len(rekeyKeys), requiredKeys))
+				broadcastMessage(bot, msg.Text)
 				setRekeyCommands(bot)
 				bot.Send(msg)
-			case "rekey_token":
-				reKeyToken := strings.TrimSpace(strings.TrimPrefix(update.Message.Text, "/rekey-token "))
-				if reKeyToken == "" {
-					msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received Empty string. Please provide a valid unseal key for Rekey process"))
+				go startRekeyTimer(bot, chatId)
+			case "rekey_init_keys":
+				if _, exists := rekeyKeys[userID]; exists {
+					msg := tgbotapi.NewMessage(chatId, "You have already provided a rekey key.")
 					bot.Send(msg)
 					continue
 				}
-				unsealKeys = append(unsealKeys, reKeyToken)
-				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
+				match := rekeyKeyFormat.FindStringSubmatch(update.Message.Text)
+				if len(match) != 2 {
+					msg := tgbotapi.NewMessage(chatId, "Invalid rekey key format. Please provide a valid rekey key in the format: /rekey_init_keys \"key\".")
+					bot.Send(msg)
+					continue
+				}
+				rekeyKey := match[1]
+				rekeyKeys[rekeyKey] = struct{}{}
+				msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
 				bot.Send(msg)
 
-				if len(unsealKeys) >= requiredKeys {
-					err := updateRekeyProcess(unsealKeys, totalKeys, allowedUserIDs, bot)
+				if len(rekeyKeys) >= requiredKeys {
+					keys := make([]string, 0, len(rekeyKeys))
+					for key := range rekeyKeys {
+						keys = append(keys, key)
+					}
+					err := updateRekeyProcess(keys, totalKeys, bot)
 					if err != nil {
-						log.Printf("Error unsealing Vault: %v", err)
-						msg := tgbotapi.NewMessage(chatId, "Error unsealing Vault. Please send the unseal keys again.")
+						log.Printf("Error updating rekey process: %v", err)
+						msg := tgbotapi.NewMessage(chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
 						bot.Send(msg)
-						unsealKeys = []string{}
+						rekeyKeys = make(map[string]struct{})
 					} else {
-						msg := tgbotapi.NewMessage(chatId, "Vault Rekey process successfully completed.")
-						bot.Send(msg)
-						unsealKeys = []string{}
+						msg := tgbotapi.NewMessage(chatId, "Vault rekey process successfully completed.")
+						broadcastMessage(bot, msg.Text)
+						rekeyKeys = make(map[string]struct{})
+						setDefaultCommands(bot)
 					}
 				}
 			case "rekey_cancel":
+				rekeyActiveMutex.Lock()
+				rekeyActive = false
+				rekeyActiveMutex.Unlock()
+
 				err := cancelRekeyProcess()
 				if err != nil {
-					log.Printf("Cancel rekey process failed")
+					log.Printf("Cancel rekey process failed: %v", err)
 				}
+				msg := tgbotapi.NewMessage(chatId, "Rekey process has been canceled.")
+				bot.Send(msg)
+				setDefaultCommands(bot)
 			default:
 				msg := tgbotapi.NewMessage(update.Message.Chat.ID, "I don't know that command")
 				bot.Send(msg)
+			}
+		} else {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Only commands are accepted. Use /help to see available commands.")
+			bot.Send(msg)
+		}
+	}
+}
+
+func broadcastMessage(bot *tgbotapi.BotAPI, message string) {
+	for userName, userDets := range allowedUserIDs {
+		if userDets != nil {
+			msg := tgbotapi.NewMessage(userDets.UserId, message)
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Failed to send message to user %s: %v", userName, err)
 			}
 		}
 	}
 }
 
-func sendVaultStatusUpdate(allowedUserIDs map[string]*TelegramUserDetails, bot *tgbotapi.BotAPI, statusChan <-chan string) {
+func verifyVaultUnseal(bot *tgbotapi.BotAPI, chatId int64) {
+	for i := 0; i < 5; i++ {
+		time.Sleep(10 * time.Second)
+		res, err := checkVaultStatus()
+		if err != nil {
+			log.Printf("Error checking Vault status: %v", err)
+			continue
+		}
+		if !res.Sealed {
+			vaultIsUnsealedLock.Lock()
+			vaultIsUnsealed = true
+			vaultIsUnsealedLock.Unlock()
+			msg := tgbotapi.NewMessage(chatId, "Vault unsealed successfully verified.")
+			broadcastMessage(bot, msg.Text)
+			return
+		}
+	}
+	msg := tgbotapi.NewMessage(chatId, "Vault is still sealed. The required keys setting might be incorrect.")
+	broadcastMessage(bot, msg.Text)
+}
+
+func startRekeyTimer(bot *tgbotapi.BotAPI, chatId int64) {
+	time.Sleep(10 * time.Minute)
+	rekeyActiveMutex.Lock()
+	if rekeyActive {
+		rekeyActive = false
+		rekeyKeys = make(map[string]struct{})
+		msg := tgbotapi.NewMessage(chatId, "Rekey process timed out. Please start the process again if needed.")
+		broadcastMessage(bot, msg.Text)
+		setDefaultCommands(bot)
+	}
+	rekeyActiveMutex.Unlock()
+}
+
+func sendVaultStatusUpdate(bot *tgbotapi.BotAPI, statusChan <-chan string) {
 	for {
 		select {
 		case message := <-statusChan:
-			for userID, t := range allowedUserIDs {
-				if time.Since(t.LastUpdated) > 5*time.Minute {
+			for _, t := range allowedUserIDs {
+				if t != nil && time.Since(t.LastUpdated) > 5*time.Minute {
 					t.LastUpdated = time.Now()
 					msg := tgbotapi.NewMessage(t.UserId, message)
 					if _, err := bot.Send(msg); err != nil {
-						log.Printf("Failed to send message to user ID %s: %v", userID, err)
+						log.Printf("Failed to send message to user ID %d: %v", t.UserId, err)
 					}
 				}
 			}
@@ -202,7 +315,7 @@ func pollVaultEverySec(statusChan chan string) {
 		case <-ticker.C:
 			res, err := checkVaultStatus()
 			if err != nil {
-				statusChan <- fmt.Sprintf("Vault is down and Will restart soon. Here is the error: %+v", err)
+				statusChan <- fmt.Sprintf("Vault is down and will restart soon. Here is the error: %+v", err)
 			}
 			if res.Sealed == true {
 				statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %t and Sealed is %t", res.Initialized, res.Sealed)
@@ -212,12 +325,9 @@ func pollVaultEverySec(statusChan chan string) {
 }
 
 func checkVaultStatus() (*VaultHealth, error) {
-	url := os.Getenv("VAULT_HOST")
-	log.Printf("Url is %s", url)
-
+	vaultHealthURL := os.Getenv("VAULT_HOST") + "/v1/sys/health"
 	client := &http.Client{}
-
-	req, err := http.NewRequest("GET", url+"/v1/sys/health", nil)
+	req, err := http.NewRequest("GET", vaultHealthURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -229,26 +339,22 @@ func checkVaultStatus() (*VaultHealth, error) {
 
 	defer resp.Body.Close()
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("Error reading response body: %v", err)
 	}
 
-	// Print the response body
 	log.Println(string(body))
 
-	var health *VaultHealth
+	var health VaultHealth
 	err = json.Unmarshal(body, &health)
 	if err != nil {
 		return nil, fmt.Errorf("Error unmarshalling response: %v", err)
 	}
 
-	// Print the struct
 	log.Printf("%+v\n", health)
 
-	return health, nil
-
+	return &health, nil
 }
 
 func unsealVault(unsealKeys []string) error {
@@ -281,7 +387,7 @@ func unsealVault(unsealKeys []string) error {
 	return nil
 }
 
-func updateRekeyProcess(unsealKeys []string, totalKeys int, allowedUserIDs map[string]*TelegramUserDetails, bot *tgbotapi.BotAPI) error {
+func updateRekeyProcess(unsealKeys []string, totalKeys int, bot *tgbotapi.BotAPI) error {
 	vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
 
 	payload := map[string]interface{}{
@@ -307,6 +413,8 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, allowedUserIDs map[s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Error response body: %s", body)
 		return fmt.Errorf("failed to start rekey process, status code: %d", resp.StatusCode)
 	}
 
@@ -323,25 +431,29 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, allowedUserIDs map[s
 
 	log.Printf("Rekey process started with nonce: %s", rekeyProcess.Nonce)
 
-	// Send unseal keys to complete the rekey process
 	for _, unsealKey := range unsealKeys {
 		if err := submitRekeyShare(unsealKey, rekeyProcess.Nonce); err != nil {
 			return fmt.Errorf("error submitting rekey share: %v", err)
 		}
 	}
 
-	// Fetch the new keys and send them to allowed users
 	newKeys, err := fetchNewKeys(rekeyProcess.Nonce)
 	if err != nil {
 		return fmt.Errorf("error fetching new keys: %v", err)
 	}
 
-	// Share new keys with allowed users
-	// totalUsers := len(allowedUserIDs)
+	// Distribute new keys to users
+	userIdx := 0
 	for userName, userDets := range allowedUserIDs {
-		msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, New keys: %s and your New Base64 Keys: %s", userName, strings.Join(newKeys.Keys, ","), strings.Join(newKeys.KeysBase64, ",")))
-		if _, err := bot.Send(msg); err != nil {
-			log.Printf("Failed to send new keys to chat ID %d: %v", userDets.UserId, err)
+		if userDets != nil && userIdx < len(newKeys.Keys) {
+			msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, Your new key: %s", userName, newKeys.Keys[userIdx]))
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Failed to send new key to user ID %d: %v", userDets.UserId, err)
+			}
+			userIdx++
+		} else if userIdx >= len(newKeys.Keys) {
+			log.Printf("Warning: Not enough keys for all users. Remaining users will not receive new keys.")
+			break
 		}
 	}
 
@@ -376,6 +488,8 @@ func submitRekeyShare(unsealKey, nonce string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Error response body: %s", body)
 		return fmt.Errorf("failed to submit rekey share, status code: %d", resp.StatusCode)
 	}
 
@@ -407,6 +521,8 @@ func fetchNewKeys(nonce string) (*VaultRekeyUpdatedResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Error response body: %s", body)
 		return nil, fmt.Errorf("failed to fetch new keys, status code: %d", resp.StatusCode)
 	}
 
@@ -415,13 +531,13 @@ func fetchNewKeys(nonce string) (*VaultRekeyUpdatedResponse, error) {
 		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 
-	var newKeys *VaultRekeyUpdatedResponse
+	var newKeys VaultRekeyUpdatedResponse
 	err = json.Unmarshal(body, &newKeys)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
-	return newKeys, nil
+	return &newKeys, nil
 }
 
 func cancelRekeyProcess() error {
@@ -440,6 +556,8 @@ func cancelRekeyProcess() error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("Error response body: %s", body)
 		return fmt.Errorf("failed to cancel rekey process, status code: %d", resp.StatusCode)
 	}
 
@@ -464,7 +582,7 @@ func setRekeyCommands(bot *tgbotapi.BotAPI) {
 	commands := []tgbotapi.BotCommand{
 		{Command: "start", Description: "Start the bot"},
 		{Command: "vault_status", Description: "Get Vault status"},
-		{Command: "rekey_token", Description: "Provide rekey token"},
+		{Command: "rekey_init_keys", Description: "Provide rekey key"},
 		{Command: "rekey_cancel", Description: "Cancel rekey process"},
 		{Command: "help", Description: "Show available commands"},
 	}
@@ -473,3 +591,4 @@ func setRekeyCommands(bot *tgbotapi.BotAPI) {
 		log.Fatalf("Failed to set commands: %v", err)
 	}
 }
+
