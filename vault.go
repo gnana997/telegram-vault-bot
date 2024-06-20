@@ -255,10 +255,10 @@ func submitFinalRekeyShare(lastKey string, nonce string) (*VaultRekeyUpdatedResp
 }
 
 func cancelRekeyProcess() error {
-	vaultRekeyCancelURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/cancel"
+	vaultRekeyCancelURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
 	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
 
-	req, err := http.NewRequest("PUT", vaultRekeyCancelURL, nil)
+	req, err := http.NewRequest("DELETE", vaultRekeyCancelURL, nil) // Corrected to DELETE as per the API doc
 	if err != nil {
 		return err
 	}
@@ -271,6 +271,12 @@ func cancelRekeyProcess() error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	// Check if the status code is 204 No Content
+	if resp.StatusCode == http.StatusNoContent {
+		log.Println("Rekey process canceled successfully.")
+		return nil
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
