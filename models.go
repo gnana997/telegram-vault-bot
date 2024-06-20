@@ -20,14 +20,14 @@ type VaultHealth struct {
 
 type VaultRekeyProcess struct {
 	Nonce               string `json:"nonce"`
-	Started             string `json:"started"`
+	Started             bool   `json:"started"`
 	T                   int64  `json:"t"`
 	N                   int64  `json:"n"`
 	Progress            int64  `json:"progress"`
 	Required            int64  `json:"required"`
 	PGPFingerprints     any    `json:"pgp_fingerprints"`
 	Backup              bool   `json:"backup"`
-	VerficationRequired bool   `json:"verification_required"`
+	VerificationRequired bool  `json:"verification_required"`
 }
 
 type VaultRekeyUpdatedResponse struct {
@@ -37,7 +37,7 @@ type VaultRekeyUpdatedResponse struct {
 	KeysBase64          []string `json:"keys_base64"`
 	PGPFingerprints     any      `json:"pgp_fingerprints"`
 	Backup              bool     `json:"backup"`
-	VerficationRequired bool     `json:"verification_required"`
+	VerificationRequired bool    `json:"verification_required"`
 }
 
 type TelegramUserDetails struct {

@@ -1,0 +1,127 @@
+read the api doc please - https://developer.hashicorp.com/vault/api-docs/system/rekey and learn why we are getting the below error
+
+again getting this error
+
+2024/06/20 12:37:35 Endpoint: setMyCommands, params: map[commands:[{"command":"start","description":"Start the bot"},{"command":"vault_status","description":"Get Vault status"},{"command":"rekey_init_keys","description":"Provide rekey key"},{"command":"rekey_cancel","description":"Cancel rekey process"},{"command":"help","description":"Show available commands"},{"command":"refresh","description":"Refresh the bot state"}]]
+2024/06/20 12:37:36 Endpoint: setMyCommands, response: {"ok":true,"result":true}
+2024/06/20 12:37:43 Endpoint: getUpdates, response: {"ok":true,"result":[{"update_id":848382622,
+"message":{"message_id":361,"from":{"id":664645351,"is_bot":false,"first_name":"Dk | karpatkey","username":"dharmendrakariya","language_code":"en","is_premium":true},"chat":{"id":664645351,"first_name":"Dk | karpatkey","username":"dharmendrakariya","type":"private"},"date":1718867263,"text":"/rekey_init_keys \"6dca2b01856a58c0be4a4792ac6acad0937168fc32791ecebdbfb2c120ea961e40\"","entities":[{"offset":0,"length":16,"type":"bot_command"}]}}]}
+2024/06/20 12:37:43 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382623 timeout:60]
+2024/06/20 12:37:43 Update: [dharmendrakariya]
+2024/06/20 12:37:43 Endpoint: sendMessage, params: map[chat_id:664645351 entities:null text:Received rekey key: 1/2]
+2024/06/20 12:37:43 Endpoint: sendMessage, response: {"ok":true,"result":{"message_id":362,"from":{"id":7398512117,"is_bot":true,"first_name":"Vault-engineer","username":"Vault_engineer_bot"},"chat":{"id":664645351,"first_name":"Dk | karpatkey","username":"dharmendrakariya","type":"private"},"date":1718867263,"text":"Received rekey key: 1/2"}}
+2024/06/20 12:37:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867269,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:37:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867269 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:38:33 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:38:33 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382623 timeout:60]
+2024/06/20 12:38:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867329,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:38:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867329 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:39:23 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:39:23 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382623 timeout:60]
+2024/06/20 12:39:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867389,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:39:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867389 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:40:13 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:40:13 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382623 timeout:60]
+2024/06/20 12:40:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867449,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:40:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867449 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:41:03 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:41:03 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382623 timeout:60]
+2024/06/20 12:41:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867509,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:41:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867509 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:41:49 Endpoint: getUpdates, response: {"ok":true,"result":[{"update_id":848382623,
+"message":{"message_id":363,"from":{"id":792641007,"is_bot":false,"first_name":"Yash","last_name":"Pandya","username":"Yashpandya777","language_code":"en"},"chat":{"id":792641007,"first_name":"Yash","last_name":"Pandya","username":"Yashpandya777","type":"private"},"date":1718867509,"text":"/rekey_init_keys \"aa2f65d4b49cc230f4039713f8bc1902ae8262a67cbe989d21f6359281b41f95cd\"","entities":[{"offset":0,"length":16,"type":"bot_command"}]}}]}
+2024/06/20 12:41:49 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382624 timeout:60]
+2024/06/20 12:41:49 Update: [Yashpandya777]
+2024/06/20 12:41:49 Endpoint: sendMessage, params: map[chat_id:792641007 entities:null text:Received rekey key: 2/2]
+2024/06/20 12:41:49 Endpoint: sendMessage, response: {"ok":true,"result":{"message_id":364,"from":{"id":7398512117,"is_bot":true,"first_name":"Vault-engineer","username":"Vault_engineer_bot"},"chat":{"id":792641007,"first_name":"Yash","last_name":"Pandya","username":"Yashpandya777","type":"private"},"date":1718867509,"text":"Received rekey key: 2/2"}}
+2024/06/20 12:41:50 Error response body: {"errors":["rekey already in progress"]}
+2024/06/20 12:41:50 Error updating rekey process: failed to start rekey process, status code: 400
+2024/06/20 12:41:50 Endpoint: sendMessage, params: map[chat_id:792641007 entities:null text:Error updating rekey process. Please send the rekey keys again. Error: failed to start rekey process, status code: 400]
+2024/06/20 12:41:50 Endpoint: sendMessage, response: {"ok":true,"result":{"message_id":365,"from":{"id":7398512117,"is_bot":true,"first_name":"Vault-engineer","username":"Vault_engineer_bot"},"chat":{"id":792641007,"first_name":"Yash","last_name":"Pandya","username":"Yashpandya777","type":"private"},"date":1718867510,"text":"Error updating rekey process. Please send the rekey keys again. Error: failed to start rekey process, status code: 400"}}
+2024/06/20 12:42:39 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:42:39 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382624 timeout:60]
+2024/06/20 12:42:49 {"initialized":true,"sealed":false,"standby":false,"performance_standby":false,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1718867569,"version":"1.16.1","enterprise":false,"cluster_name":"vault-cluster-8158d0c8","cluster_id":"c97b39d6-2e9d-2317-3565-a99ee675c46c","echo_duration_ms":0,"clock_skew_ms":0}
+
+2024/06/20 12:42:49 {Initialized:true Sealed:false Standby:false PerformanceStandby:false ReplicationPerformanceMode:disabled ReplicationDRMode:disabled ServerTimeUTC:1718867569 Version:1.16.1 Enterprise:false ClusterName:vault-cluster-8158d0c8 ClusterID:c97b39d6-2e9d-2317-3565-a99ee675c46c EchoDurationMs:0 ClockSkewMs:0}
+2024/06/20 12:43:29 Endpoint: getUpdates, response: {"ok":true,"result":[]}
+2024/06/20 12:43:29 Endpoint: getUpdates, params: map[allowed_updates:null offset:848382624 timeout:60]
+
+please read carefully the post request ! 
+
+Also this msg was sent to the user who provided 2nd key 
+
+"
+Vault-engineer:
+Received rekey key: 2/2
+
+Error updating rekey process. Please send the rekey keys again. Error: failed to start rekey process, status code: 400
+"
+
+could you send the success or error msg as brodcast msg so that everyone ( all users ) know what happened?
+
+cause I initiated the rekey_init and I don't know what second user got as error?
+
+
+1: unseal not allowed if state is sealed: false
+
+2: multiple keys not accepted, meaning if same user provide all required keys or more than one key than just discard that and say ask other user to provide the key, this should be done for both unseal and rekey
+
+  if any user provide any key ( for both unseal and rekey ) broadcast the msg that this user has provided his key, give additional required keys other users
+
+3: see the api docs and post request - https://developer.hashicorp.com/vault/api-docs/system/rekey here 
+
+  specially this https://developer.hashicorp.com/vault/api-docs/system/rekey#submit-key
+
+  see the reuest and response , please print them in the logs!, devide and distribute keys to all the users ! after that say okay all the users have gotten the keys
+
+4: send broadcast of process begun, key provided bey other users ( 1/2 keys ) , failure or success msg ( for both unseal and rekey process )
+
+5:  
+
+
+also I think we should not send api request to vault until and unless we get all the keys, once we get it withing time window, then just fire the api!
+
+also I think we shoud print the nonse and brodcast that to all users when its making the api call to the vault, this is just for the debugging purpose and do stuff manually if anything goes wrong
+
+
+
+manual operation
+
+(⎈|frank-kpk:default)➜  velero git:(main) ✗ curl \                                                      
+    --header "X-Vault-Token: ..." \
+    --request POST \
+    --data '{ "secret_shares": 4, "secret_threshold": 2 }' \
+    http://127.0.0.1:8200/v1/sys/rekey/init             
+
+{"nonce":"cab684aa-9dcd-4f80-3a9e-648ff9a7b120","started":true,"t":2,"n":4,"progress":0,"required":2,"pgp_fingerprints":null,"backup":false,"verification_required":false}
+
+
+
+(⎈|frank-kpk:default)➜  velero git:(main) ✗ curl \                                                            
+    --header "X-Vault-Token: ..." \
+    --request POST \
+    --data '{
+  "key": "fa06febba019d5dac70b51d9b00da741a9e9cd099930dc34b0ba986cc53d1ce0d9",
+  "nonce": "cab684aa-9dcd-4f80-3a9e-648ff9a7b120"}' \
+    http://127.0.0.1:8200/v1/sys/rekey/update
+
+{"nonce":"cab684aa-9dcd-4f80-3a9e-648ff9a7b120","started":true,"t":2,"n":4,"progress":1,"required":2,"pgp_fingerprints":null,"backup":false,"verification_required":false}
+
+
+(⎈|frank-kpk:default)➜  velero git:(main) ✗ curl \                                                            
+    --header "X-Vault-Token: ..." \
+    --request POST \
+    --data '{
+  "key": "5c8497db50eeda7bec504d69deb73da20a0217079998a5b729092cfdb876238306",
+  "nonce": "cab684aa-9dcd-4f80-3a9e-648ff9a7b120"}' \
+    http://127.0.0.1:8200/v1/sys/rekey/update
+
+{"nonce":"cab684aa-9dcd-4f80-3a9e-648ff9a7b120","complete":true,"keys":["a443f3fd834644b2bd01fd47d3d78210b8ce9b4a079ab225e3d6cfcdfacfff58aa","7e0099bde8675b5eb33a88104eb12cf819cc49637770660d15489c73de988a2044","264af762f5f6dda4378960fc8bbdefd52d2aa4473bbbba5acd18a7c1eb7462d958","584d02172e6faa5fb8f1e2954a9b3d965e76b1b52fa44b86d7ab76c5e41de0a6ff"],"keys_base64":["pEPz/YNGRLK9Af1H09eCELjOm0oHmrIl49bPzfrP/1iq","fgCZvehnW16zOogQTrEs+BnMSWN3cGYNFUicc96YiiBE","Jkr3YvX23aQ3iWD8i73v1S0qpEc7u7pazRinwet0YtlY","WE0CFy5vql+48eKVSps9ll52sbUvpEuG16t2xeQd4Kb/"],"pgp_fingerprints":null,"backup":false,"verification_required":false}
+
+
+(⎈|frank-kpk:default)➜  velero git:(main) ✗ 

@@ -1,9 +1,8 @@
-
 # Vault Engineer Bot
 
 ## Problem Statement
 
-Managing and unsealing a HashiCorp Vault can be a complex task, especially when coordinating the process among multiple users who possess different unseal keys. Furthermore, the rekey process adds another layer of complexity requiring careful coordination and security.
+Managing and unsealing a HashiCorp Vault can be a complex task, especially when coordinating the process among multiple users who possess different unseal keys. Additionally, the rekey process adds another layer of complexity requiring careful coordination and security.
 
 ## Purpose
 
@@ -25,10 +24,12 @@ The Vault Engineer Bot is designed to simplify and automate the process of manag
    - `/rekey_init`: Initiate the rekey process, enabling the `/rekey_init_keys` command.
    - `/rekey_init_keys "key"`: Provide a rekey key during the rekey process.
    - `/rekey_cancel`: Cancel the ongoing rekey process.
+   - `/refresh`: Reset the bot state, discarding ongoing unseal or rekey operations.
    - `/help`: Display available commands.
 3. **Unseal Process**: Users provide their unseal keys through the bot. Once the required number of keys is collected, the bot attempts to unseal the Vault and verifies the unseal status.
 4. **Rekey Process**: Users can initiate the rekey process, after which they provide their rekey keys. The bot collects these keys, completes the rekey process, and distributes the new keys to the users.
 5. **Verification and Updates**: The bot continuously verifies the Vault's status and provides updates to users, ensuring transparency and security throughout the process.
+6. **Timeout Mechanism**: The bot has a 10-minute window for users to provide the necessary keys for unseal and rekey operations. If the required keys are not provided within this window, the process times out and must be restarted.
 
 ## Deployment
 
@@ -38,8 +39,34 @@ The Vault Engineer Bot is designed to simplify and automate the process of manag
    - `VAULT_TOTAL_KEYS`: The total number of keys.
    - `TELEGRAM_USERS`: Comma-separated list of authorized Telegram usernames.
    - `VAULT_HOST`: The URL of your Vault instance.
-2. **Run the Bot**: Deploy the bot by running the Go application. Ensure all dependencies are installed and the environment variables are correctly set.
+
+2. **Build and Run the Bot**: Deploy the bot by running the Go application. Ensure all dependencies are installed and the environment variables are correctly set.
+
+```sh
+go build -o bin/vault-engineer
+./bin/vault-engineer
+```
+
 3. **Interaction**: Authorized users can interact with the bot via Telegram to manage the Vault's unseal and rekey processes.
+
+## Edge Cases Considered
+
+- **Duplicate Keys from the Same User**: The bot ensures that a user can only provide one key per process. If a user tries to provide multiple keys, the bot discards the extra keys and asks for keys from other users.
+- **Vault Already Unsealed**: The bot checks the Vault's status before accepting unseal keys to ensure it doesn't collect keys unnecessarily.
+- **Ongoing Rekey Process**: The bot checks if a rekey process is already in progress before initiating a new one, ensuring proper handling of concurrent operations.
+- **Timeout Handling**: If the required keys are not provided within 10 minutes, the bot resets the state and cancels the operation.
+- **Broadcast Messages**: The bot broadcasts the success or failure of the unseal or rekey operations to all authorized users, ensuring everyone is informed of the current status.
+
+## Development and Future Enhancements
+
+- **Adding New Commands**: Follow the structure of existing commands to add new functionalities.
+- **Improving Security**: Consider implementing more robust security measures such as encrypted communication between the bot and the Vault server.
+- **Enhancing User Experience**: Add more detailed status messages and user feedback to improve interaction with the bot.
+- **Scalability**: Ensure the bot can handle a larger number of users and keys as your Vault environment grows.
+
+## Contributing
+
+We welcome contributions from the community. Please submit your pull requests with detailed descriptions of the changes and the problem they solve. Make sure to run tests and follow the code style of the project.
 
 ---
 
@@ -50,3 +77,4 @@ Feel free to customize this template further based on your specific requirements
 PRs are welcomed
 
 ---
+
