@@ -146,8 +146,8 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, bot *tgbotapi.BotAPI
 	log.Printf("Rekey process started with nonce: %s", rekeyProcess.Nonce)
 	broadcastMessage(bot, fmt.Sprintf("Rekey process started with nonce: %s", rekeyProcess.Nonce))
 
-	for _, unsealKey := range unsealKeys {
-		if err := submitRekeyShare(unsealKey, rekeyProcess.Nonce); err != nil {
+	for i := 0; i < len(unsealKeys) - 1; i++ {
+		if err := submitRekeyShare(unsealKeys[i], rekeyProcess.Nonce); err != nil {
 			return fmt.Errorf("error submitting rekey share: %v", err)
 		}
 	}
