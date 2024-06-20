@@ -316,38 +316,82 @@ func distributeKeys(newKeys *VaultRekeyUpdatedResponse, bot *tgbotapi.BotAPI) er
 }
 
 func isRekeyInProgress() (bool, error) {
-	vaultRekeyStatusURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
-	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
+    vaultRekeyStatusURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
+    vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", vaultRekeyStatusURL, nil)
-	if err != nil {
-		return false, err
-	}
+    client := &http.Client{}
+    req, err := http.NewRequest("GET", vaultRekeyStatusURL, nil)
+    if err != nil {
+        return false, err
+    }
 
-	req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
+    req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
+    resp, err := client.Do(req)
+    if err != nil {
+        return false, err
+    }
+    defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, fmt.Errorf("error reading response body: %v", err)
-	}
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return false, fmt.Errorf("error reading response body: %v", err)
+    }
 
-	if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	}
+    log.Printf("Rekey status response: %s", body)
 
-	var status map[string]interface{}
-	err = json.Unmarshal(body, &status)
-	if err != nil {
-		return false, fmt.Errorf("error unmarshalling response: %v", err)
-	}
+    var status struct {
+        Started bool `json:"started"`
+    }
+    err = json.Unmarshal(body, &status)
+    if err != nil {
+        return false, fmt.Errorf("error unmarshalling response: %v", err)
+    }
 
-	_, inProgress := status["started"]
-	return inProgress, nil
+    log.Printf("Rekey status: %v", status.Started)
+
+    return status.Started, nil
+}
+
+func initiateRekeyProcess(requiredKeys int) error {
+    vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
+    vaultToken := os.Getenv("VAULT_TOKEN")
+
+    payload := map[string]interface{}{
+        "secret_shares":    requiredKeys,
+        "secret_threshold": requiredKeys,
+    }
+
+    jsonPayload, err := json.Marshal(payload)
+    if err != nil {
+        return err
+    }
+
+    req, err := http.NewRequest("POST", vaultRekeyURL, bytes.NewBuffer(jsonPayload))
+    if err != nil {
+        return err
+    }
+
+    req.Header.Set("X-Vault-Token", vaultToken)
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return fmt.Errorf("error reading response body: %v", err)
+    }
+
+    log.Printf("Rekey initiation response: %s", body)
+
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("failed to initiate rekey process, status code: %d", resp.StatusCode)
+    }
+
+    return nil
 }
