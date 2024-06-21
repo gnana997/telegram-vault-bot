@@ -28,7 +28,7 @@ func checkVaultStatus() (*VaultHealth, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("Error reading response body: %v", err)
+		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 
 	log.Println(string(body))
@@ -36,7 +36,7 @@ func checkVaultStatus() (*VaultHealth, error) {
 	var health VaultHealth
 	err = json.Unmarshal(body, &health)
 	if err != nil {
-		return nil, fmt.Errorf("Error unmarshalling response: %v", err)
+		return nil, fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
 	log.Printf("%+v\n", health)
@@ -142,7 +142,7 @@ func updateRekeyProcess(unsealKeys []string, totalKeys int, bot *tgbotapi.BotAPI
 	return handleRekeyCompletion(unsealKeys, bot, rekeyProcess.Nonce)
 }
 
-func submitRekeyShare(unsealKey, nonce string, bot *tgbotapi.BotAPI) error {
+func submitRekeyShare(unsealKey, nonce string, bot *tgbotapi.BotAPI) (*VaultRekeyUpdatedResponse, error) {
 	vaultRekeyUpdateURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
 	vaultToken := os.Getenv("VAULT_TOKEN")
 
@@ -153,12 +153,12 @@ func submitRekeyShare(unsealKey, nonce string, bot *tgbotapi.BotAPI) error {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", vaultRekeyUpdateURL, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("X-Vault-Token", vaultToken)
@@ -167,43 +167,43 @@ func submitRekeyShare(unsealKey, nonce string, bot *tgbotapi.BotAPI) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("error reading response body: %v", err)
+		return nil, fmt.Errorf("error reading response body: %v", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Error response body: %s", body)
-		return fmt.Errorf("failed to submit rekey share, status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("failed to submit rekey share, status code: %d", resp.StatusCode)
 	}
 
 	log.Printf("Submitted rekey share: %s", body)
 
 	// Check if rekey is complete
-	var rekeyUpdatedResponse VaultRekeyUpdatedResponse
-	err = json.Unmarshal(body, &rekeyUpdatedResponse)
+	var rekeyStatus VaultRekeyUpdatedResponse
+	err = json.Unmarshal(body, &rekeyStatus)
 	if err != nil {
-		return fmt.Errorf("error unmarshalling response: %v", err)
+		return nil, fmt.Errorf("error unmarshalling response: %v", err)
 	}
 
-	if rekeyUpdatedResponse.Complete {
-		return distributeKeys(&rekeyUpdatedResponse, bot)
+	if rekeyStatus.Complete {
+		return &rekeyStatus, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
-func submitFinalRekeyShare(lastKey, nonce string) (*VaultRekeyUpdatedResponse, error) {
+func submitFinalRekeyShare(lastKey string) (*VaultRekeyUpdatedResponse, error) {
 	vaultRekeyUpdateURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
 	vaultToken := os.Getenv("VAULT_TOKEN")
 
 	payload := map[string]interface{}{
 		"key":   lastKey,
-		"nonce": nonce,
+		"nonce": rekeyNonce,
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -407,8 +407,12 @@ func initiateRekeyProcess(totalKeys, threshold int) error {
 
 func handleRekeyCompletion(unsealKeys []string, bot *tgbotapi.BotAPI, nonce string) error {
 	for i, key := range unsealKeys {
-		if err := submitRekeyShare(key, nonce, bot); err != nil {
+		newKeys, err := submitRekeyShare(key, nonce, bot)
+		if err != nil {
 			return fmt.Errorf("error submitting rekey share %d: %v", i+1, err)
+		}
+		if newKeys != nil {
+			return distributeKeys(newKeys, bot)
 		}
 	}
 
@@ -419,7 +423,7 @@ func handleRekeyCompletion(unsealKeys []string, bot *tgbotapi.BotAPI, nonce stri
 	}
 
 	if rekeyStatus.Complete {
-		newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1], nonce)
+		newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1])
 		if err != nil {
 			broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
 			return fmt.Errorf("error fetching new keys: %v", err)
