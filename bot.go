@@ -84,7 +84,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int) {
     log.Println("Starting handleRekeyInitCommand")
 
-    rekeyInProgress, err := isRekeyInProgress() // Check if rekey is in progress
+    rekeyInProgress, err := isRekeyInProgress()
     if err != nil {
         sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
         return
@@ -99,8 +99,7 @@ func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int
         return
     }
 
-    // Log the initiation request and response
-    err = initiateRekeyProcess(requiredKeys)
+    err = initiateRekeyProcess(4, 2)  // Initialize with 4 keys and threshold of 2
     if err != nil {
         log.Printf("Error initiating rekey process: %v", err)
         rekeyActiveMutex.Unlock()
@@ -122,28 +121,15 @@ func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int
     } else {
         rekeyTimer.Reset(10 * time.Minute)
     }
-
-    log.Println("Rekey process has been initiated")
 }
 
 func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update, requiredKeys, totalKeys int) {
     log.Println("Starting handleRekeyInitKeysCommand")
 
-    rekeyInProgress, err := isRekeyInProgress() // Check if rekey is in progress
+    rekeyInProgress, err := isRekeyInProgress()
     if err != nil {
         sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
         return
-    }
-
-    // Adding a delay to ensure Vault's state is updated
-    if !rekeyInProgress {
-        log.Println("Rekey process not yet started, waiting for 1 second...")
-        time.Sleep(1 * time.Second)
-        rekeyInProgress, err = isRekeyInProgress()
-        if err != nil {
-            sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
-            return
-        }
     }
 
     rekeyActiveMutex.Lock()

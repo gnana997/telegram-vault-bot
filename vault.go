@@ -12,6 +12,9 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+var rekeyNonce string
+
+
 func checkVaultStatus() (*VaultHealth, error) {
 	vaultHealthURL := os.Getenv("VAULT_HOST") + "/v1/sys/health"
 	client := &http.Client{}
@@ -77,181 +80,190 @@ func unsealVault(unsealKeys []string) error {
 }
 
 func updateRekeyProcess(unsealKeys []string, totalKeys int, bot *tgbotapi.BotAPI) error {
-	vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
-	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
+    vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
+    vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
 
-	payload := map[string]interface{}{
-		"secret_shares":    totalKeys,
-		"secret_threshold": len(unsealKeys),
-	}
+    payload := map[string]interface{}{
+        "secret_shares":    totalKeys,
+        "secret_threshold": len(unsealKeys),
+    }
 
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+    jsonPayload, err := json.Marshal(payload)
+    if err != nil {
+        return err
+    }
 
-	req, err := http.NewRequest("POST", vaultRekeyURL, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return err
-	}
+    req, err := http.NewRequest("POST", vaultRekeyURL, bytes.NewBuffer(jsonPayload))
+    if err != nil {
+        return err
+    }
 
-	req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
+    req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %v", err)
-	}
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return fmt.Errorf("error reading response body: %v", err)
+    }
 
-	if resp.StatusCode == http.StatusBadRequest {
-		var errResp map[string]interface{}
-		err = json.Unmarshal(body, &errResp)
-		if err == nil {
-			if errors, ok := errResp["errors"].([]interface{}); ok {
-				for _, e := range errors {
-					if e == "rekey already in progress" {
-						log.Println("Rekey already in progress. Continuing to submit keys.")
-						for _, unsealKey := range unsealKeys {
-							if err := submitRekeyShare(unsealKey, ""); err != nil {
-								return fmt.Errorf("error submitting rekey share: %v", err)
-							}
-						}
-						newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1], "")
-						if err != nil {
-							broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
-							return fmt.Errorf("error fetching new keys: %v", err)
-						}
-						return distributeKeys(newKeys, bot)
-					}
-				}
-			}
-		}
-		log.Printf("Error response body: %s", body)
-		broadcastMessage(bot, fmt.Sprintf("Failed to start rekey process, status code: %d", resp.StatusCode))
-		return fmt.Errorf("failed to start rekey process, status code: %d", resp.StatusCode)
-	}
+    if resp.StatusCode == http.StatusBadRequest {
+        var errResp map[string]interface{}
+        err = json.Unmarshal(body, &errResp)
+        if err == nil {
+            if errors, ok := errResp["errors"].([]interface{}); ok {
+                for _, e := range errors {
+                    if e == "rekey already in progress" {
+                        log.Println("Rekey already in progress. Continuing to submit keys.")
+                        for _, unsealKey := range unsealKeys {
+                            if err := submitRekeyShare(unsealKey); err != nil {
+                                return fmt.Errorf("error submitting rekey share: %v", err)
+                            }
+                        }
+                        newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1])
+                        if err != nil {
+                            broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
+                            return fmt.Errorf("error fetching new keys: %v", err)
+                        }
+                        return distributeKeys(newKeys, bot)
+                    }
+                }
+            }
+        }
+        log.Printf("Error response body: %s", body)
+        broadcastMessage(bot, fmt.Sprintf("Failed to start rekey process, status code: %d", resp.StatusCode))
+        return fmt.Errorf("failed to start rekey process, status code: %d", resp.StatusCode)
+    }
 
-	var rekeyProcess VaultRekeyProcess
-	err = json.Unmarshal(body, &rekeyProcess)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling response: %v", err)
-	}
+    if resp.StatusCode == http.StatusInternalServerError {
+        log.Printf("Internal Server Error response body: %s", body)
+        return fmt.Errorf("Vault internal server error, status code: %d", resp.StatusCode)
+    }
 
-	log.Printf("Rekey process started with nonce: %s", rekeyProcess.Nonce)
-	broadcastMessage(bot, fmt.Sprintf("Rekey process started with nonce: %s", rekeyProcess.Nonce))
+    var rekeyProcess struct {
+        Nonce string `json:"nonce"`
+    }
+    err = json.Unmarshal(body, &rekeyProcess)
+    if err != nil {
+        return fmt.Errorf("error unmarshalling response: %v", err)
+    }
 
-	for i := 0; i < len(unsealKeys) - 1; i++ {
-		if err := submitRekeyShare(unsealKeys[i], rekeyProcess.Nonce); err != nil {
-			return fmt.Errorf("error submitting rekey share: %v", err)
-		}
-	}
+    rekeyNonce = rekeyProcess.Nonce
+    log.Printf("Rekey process started with nonce: %s", rekeyNonce)
+    broadcastMessage(bot, fmt.Sprintf("Rekey process started with nonce: %s", rekeyNonce))
 
-	newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1], rekeyProcess.Nonce)
-	if err != nil {
-		broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
-		return fmt.Errorf("error fetching new keys: %v", err)
-	}
+    for i := 0; i < len(unsealKeys)-1; i++ {
+        if err := submitRekeyShare(unsealKeys[i]); err != nil {
+            return fmt.Errorf("error submitting rekey share: %v", err)
+        }
+    }
 
-	return distributeKeys(newKeys, bot)
+    newKeys, err := submitFinalRekeyShare(unsealKeys[len(unsealKeys)-1])
+    if err != nil {
+        broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
+        return fmt.Errorf("error fetching new keys: %v", err)
+    }
+
+    return distributeKeys(newKeys, bot)
 }
 
-func submitRekeyShare(unsealKey, nonce string) error {
-	vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
-	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
+func submitRekeyShare(unsealKey string) error {
+    vaultRekeyUpdateURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
+    vaultToken := os.Getenv("VAULT_TOKEN")
 
-	payload := map[string]interface{}{
-		"key":   unsealKey,
-		"nonce": nonce,
-	}
+    payload := map[string]interface{}{
+        "key":   unsealKey,
+        "nonce": rekeyNonce,
+    }
 
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+    jsonPayload, err := json.Marshal(payload)
+    if err != nil {
+        return err
+    }
 
-	req, err := http.NewRequest("POST", vaultRekeyURL, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return err
-	}
+    req, err := http.NewRequest("POST", vaultRekeyUpdateURL, bytes.NewBuffer(jsonPayload))
+    if err != nil {
+        return err
+    }
 
-	req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
+    req.Header.Set("X-Vault-Token", vaultToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %v", err)
-	}
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return fmt.Errorf("error reading response body: %v", err)
+    }
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Error response body: %s", body)
-		return fmt.Errorf("failed to submit rekey share, status code: %d", resp.StatusCode)
-	}
+    if resp.StatusCode != http.StatusOK {
+        log.Printf("Error response body: %s", body)
+        return fmt.Errorf("failed to submit rekey share, status code: %d", resp.StatusCode)
+    }
 
-	log.Printf("Submitted rekey share: %s", body)
+    log.Printf("Submitted rekey share: %s", body)
 
-	return nil
+    return nil
 }
 
-func submitFinalRekeyShare(lastKey string, nonce string) (*VaultRekeyUpdatedResponse, error) {
-	vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
-	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
 
-	payload := map[string]interface{}{
-		"key":   lastKey, // Include the last key
-		"nonce": nonce,
-	}
+func submitFinalRekeyShare(lastKey string) (*VaultRekeyUpdatedResponse, error) {
+    vaultRekeyUpdateURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/update"
+    vaultToken := os.Getenv("VAULT_TOKEN")
 
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
+    payload := map[string]interface{}{
+        "key":   lastKey,
+        "nonce": rekeyNonce,
+    }
 
-	req, err := http.NewRequest("POST", vaultRekeyURL, bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return nil, err
-	}
+    jsonPayload, err := json.Marshal(payload)
+    if err != nil {
+        return nil, err
+    }
 
-	req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
-	req.Header.Set("Content-Type", "application/json") // Set content type
+    req, err := http.NewRequest("POST", vaultRekeyUpdateURL, bytes.NewBuffer(jsonPayload))
+    if err != nil {
+        return nil, err
+    }
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+    req.Header.Set("X-Vault-Token", vaultToken)
+    req.Header.Set("Content-Type", "application/json")
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
-	}
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Error response body: %s", body)
-		return nil, fmt.Errorf("failed to fetch new keys, status code: %d", resp.StatusCode)
-	}
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("error reading response body: %v", err)
+    }
 
-	var newKeys VaultRekeyUpdatedResponse
-	err = json.Unmarshal(body, &newKeys)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response: %v", err)
-	}
+    if resp.StatusCode != http.StatusOK {
+        log.Printf("Error response body: %s", body)
+        return nil, fmt.Errorf("failed to fetch new keys, status code: %d", resp.StatusCode)
+    }
 
-	log.Printf("Fetched new keys: %s", body)
+    var newKeys VaultRekeyUpdatedResponse
+    err = json.Unmarshal(body, &newKeys)
+    if err != nil {
+        return nil, fmt.Errorf("error unmarshalling response: %v", err)
+    }
 
-	return &newKeys, nil
+    log.Printf("Fetched new keys: %s", body)
+
+    return &newKeys, nil
 }
 
 func cancelRekeyProcess() error {
@@ -294,25 +306,24 @@ func cancelRekeyProcess() error {
 }
 
 func distributeKeys(newKeys *VaultRekeyUpdatedResponse, bot *tgbotapi.BotAPI) error {
-	userIdx := 0
-	for userName, userDets := range allowedUserIDs {
-		if userDets != nil && userIdx < len(newKeys.Keys) {
-			msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
-			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send new key to user ID %d: %v", userDets.UserId, err)
-			}
-			userIdx++
-		} else if userIdx >= len(newKeys.Keys) {
-			log.Printf("Warning: Not enough keys for all users. Remaining users will not receive new keys.")
-			break
-		}
-	}
+    userIdx := 0
+    for userName, userDets := range allowedUserIDs {
+        if userDets != nil && userIdx < len(newKeys.Keys) {
+            msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
+            if _, err := bot.Send(msg); err != nil {
+                log.Printf("Failed to send new key to user ID %d: %v", userDets.UserId, err)
+            }
+            userIdx++
+        } else if userIdx >= len(newKeys.Keys) {
+            log.Printf("Warning: Not enough keys for all users. Remaining users will not receive new keys.")
+            break
+        }
+    }
 
-	setDefaultCommands(bot)
+    setDefaultCommands(bot)
+    broadcastMessage(bot, "All users have received their new keys.")
 
-	broadcastMessage(bot, "All users have received their new keys.")
-
-	return nil
+    return nil
 }
 
 func isRekeyInProgress() (bool, error) {
@@ -353,13 +364,13 @@ func isRekeyInProgress() (bool, error) {
     return status.Started, nil
 }
 
-func initiateRekeyProcess(requiredKeys int) error {
+func initiateRekeyProcess(totalKeys, threshold int) error {
     vaultRekeyURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
     vaultToken := os.Getenv("VAULT_TOKEN")
 
     payload := map[string]interface{}{
-        "secret_shares":    requiredKeys,
-        "secret_threshold": requiredKeys,
+        "secret_shares":    totalKeys,
+        "secret_threshold": threshold,
     }
 
     jsonPayload, err := json.Marshal(payload)
@@ -387,11 +398,21 @@ func initiateRekeyProcess(requiredKeys int) error {
         return fmt.Errorf("error reading response body: %v", err)
     }
 
-    log.Printf("Rekey initiation response: %s", body)
-
     if resp.StatusCode != http.StatusOK {
+        log.Printf("Error response body: %s", body)
         return fmt.Errorf("failed to initiate rekey process, status code: %d", resp.StatusCode)
     }
+
+    var rekeyResponse struct {
+        Nonce string `json:"nonce"`
+    }
+    err = json.Unmarshal(body, &rekeyResponse)
+    if err != nil {
+        return fmt.Errorf("error unmarshalling response: %v", err)
+    }
+
+    rekeyNonce = rekeyResponse.Nonce
+    log.Printf("Rekey process started with nonce: %s", rekeyNonce)
 
     return nil
 }
