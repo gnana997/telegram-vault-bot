@@ -82,108 +82,118 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 }
 
 func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int) {
-    log.Println("Starting handleRekeyInitCommand")
+	log.Println("Starting handleRekeyInitCommand")
 
-    rekeyInProgress, err := isRekeyInProgress()
-    if err != nil {
-        sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
-        return
-    }
+	rekeyInProgress, err := isRekeyInProgress()
+	if err != nil {
+		sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
+		return
+	}
 
-    rekeyActiveMutex.Lock()
-    log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
+	rekeyActiveMutex.Lock()
+	log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
 
-    if rekeyInProgress || rekeyActive {
-        rekeyActiveMutex.Unlock()
-        sendMessage(bot, chatId, "Rekey process is already active. Please provide your unseal key using /rekey_init_keys.")
-        return
-    }
+	if rekeyInProgress || rekeyActive {
+		rekeyActiveMutex.Unlock()
+		sendMessage(bot, chatId, "Rekey process is already active. Please provide your unseal key using /rekey_init_keys.")
+		return
+	}
 
-    err = initiateRekeyProcess(4, 2)  // Initialize with 4 keys and threshold of 2
-    if err != nil {
-        log.Printf("Error initiating rekey process: %v", err)
-        rekeyActiveMutex.Unlock()
-        sendMessage(bot, chatId, "Error initiating rekey process. Please try again later.")
-        return
-    }
+	err = initiateRekeyProcess(4, 2) // Initialize with 4 keys and threshold of 2
+	if err != nil {
+		log.Printf("Error initiating rekey process: %v", err)
+		rekeyActiveMutex.Unlock()
+		sendMessage(bot, chatId, "Error initiating rekey process. Please try again later.")
+		return
+	}
 
-    rekeyActive = true
-    rekeyActiveMutex.Unlock()
+	rekeyActive = true
+	rekeyActiveMutex.Unlock()
 
-    msg := fmt.Sprintf("Rekey process has begun. Please provide unseal key using /rekey_init_keys \"key\": %d/%d", len(rekeyKeys), requiredKeys)
-    broadcastMessage(bot, msg)
-    setRekeyCommands(bot)
-    if rekeyTimer == nil {
-        rekeyTimer = time.AfterFunc(10*time.Minute, func() {
-            resetRekeyState()
-            broadcastMessage(bot, "Rekey process timed out. Please start the process again if needed.")
-        })
-    } else {
-        rekeyTimer.Reset(10 * time.Minute)
-    }
+	msg := fmt.Sprintf("Rekey process has begun. Please provide unseal key using /rekey_init_keys \"key\": %d/%d", len(rekeyKeys), requiredKeys)
+	broadcastMessage(bot, msg)
+	setRekeyCommands(bot)
+	if rekeyTimer == nil {
+		rekeyTimer = time.AfterFunc(10*time.Minute, func() {
+			resetRekeyState()
+			broadcastMessage(bot, "Rekey process timed out. Please start the process again if needed.")
+		})
+	} else {
+		rekeyTimer.Reset(10 * time.Minute)
+	}
 }
 
 func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update, requiredKeys, totalKeys int) {
-    log.Println("Starting handleRekeyInitKeysCommand")
+	log.Println("Starting handleRekeyInitKeysCommand")
 
-    rekeyInProgress, err := isRekeyInProgress()
-    if err != nil {
-        sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
-        return
-    }
+	rekeyInProgress, err := isRekeyInProgress()
+	if err != nil {
+		sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
+		return
+	}
 
-    rekeyActiveMutex.Lock()
-    defer rekeyActiveMutex.Unlock()
+	rekeyActiveMutex.Lock()
+	defer rekeyActiveMutex.Unlock()
 
-    log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
+	log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
 
-    if !rekeyInProgress {
-        rekeyActive = false
-        sendMessage(bot, chatId, "Rekey process has not been started yet. Please initiate the rekey process using /rekey_init.")
-        return
-    }
+	if !rekeyInProgress {
+		rekeyActive = false
+		sendMessage(bot, chatId, "Rekey process has not been started yet. Please initiate the rekey process using /rekey_init.")
+		return
+	}
 
-    userID := update.Message.From.UserName
-    if _, exists := rekeyKeys[userID]; exists {
-        sendMessage(bot, chatId, "You have already provided a rekey key. Please ask other users to provide their keys.")
-        return
-    }
-    match := rekeyKeyFormat.FindStringSubmatch(update.Message.Text)
-    if len(match) != 2 {
-        sendMessage(bot, chatId, "Invalid rekey key format. Please provide a valid rekey key in the format: /rekey_init_keys \"key\".")
-        return
-    }
-    rekeyKey := match[1]
-    rekeyKeys[userID] = struct{}{}
-    providedKeys[userID] = rekeyKey
-    sendMessage(bot, chatId, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
+	userID := update.Message.From.UserName
+	if _, exists := rekeyKeys[userID]; exists {
+		sendMessage(bot, chatId, "You have already provided a rekey key. Please ask other users to provide their keys.")
+		return
+	}
+	match := rekeyKeyFormat.FindStringSubmatch(update.Message.Text)
+	if len(match) != 2 {
+		sendMessage(bot, chatId, "Invalid rekey key format. Please provide a valid rekey key in the format: /rekey_init_keys \"key\".")
+		return
+	}
+	rekeyKey := match[1]
+	rekeyKeys[userID] = struct{}{}
+	providedKeys[userID] = rekeyKey
+	broadcastMessage(bot, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
 
-    if len(rekeyKeys) >= requiredKeys {
-        keys := make([]string, 0, len(providedKeys))
-        for _, key := range providedKeys {
-            keys = append(keys, key)
-        }
-        err := updateRekeyProcess(keys, totalKeys, bot)
-        if err != nil {
-            log.Printf("Error updating rekey process: %v", err)
-            sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
-            rekeyKeys = make(map[string]struct{})
-            providedKeys = make(map[string]string)
-        } else {
-            broadcastMessage(bot, "Vault rekey process successfully completed.")
-            rekeyKeys = make(map[string]struct{})
-            providedKeys = make(map[string]string)
-            setDefaultCommands(bot)
-        }
-    }
+	if len(rekeyKeys) >= requiredKeys {
+		keys := make([]string, 0, len(providedKeys))
+		for _, key := range providedKeys {
+			keys = append(keys, key)
+		}
+		err := handleRekeyCompletion(keys, bot, rekeyNonce)
+		if err != nil {
+			log.Printf("Error updating rekey process: %v", err)
+			sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
+			rekeyKeys = make(map[string]struct{})
+			providedKeys = make(map[string]string)
+		} else {
+			broadcastMessage(bot, "Vault rekey process successfully completed.")
+			rekeyKeys = make(map[string]struct{})
+			providedKeys = make(map[string]string)
+			setDefaultCommands(bot)
+		}
+	}
 }
 
 func handleRekeyCancelCommand(bot *tgbotapi.BotAPI, chatId int64) {
 	rekeyActiveMutex.Lock()
-	rekeyActive = false
-	rekeyActiveMutex.Unlock()
+	defer rekeyActiveMutex.Unlock()
 
-	err := cancelRekeyProcess()
+	rekeyInProgress, err := isRekeyInProgress()
+	if err != nil {
+		sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
+		return
+	}
+
+	if !rekeyInProgress {
+		sendMessage(bot, chatId, "No rekey process is currently active.")
+		return
+	}
+
+	err = cancelRekeyProcess()
 	if err != nil {
 		log.Printf("Cancel rekey process failed: %v", err)
 	}

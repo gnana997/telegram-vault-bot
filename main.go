@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 	"os"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
