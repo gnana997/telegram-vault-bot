@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -32,11 +33,15 @@ func sendMessage(bot *tgbotapi.BotAPI, chatId int64, message string) {
 
 func broadcastMessage(bot *tgbotapi.BotAPI, message string) {
 	for userId, userDets := range allowedUserIDs {
+		userName := ""
 		if userDets != nil {
-			msg := tgbotapi.NewMessage(userId, message)
-			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send message to user %s: %v", userDets.UserName, err)
-			}
+			userName = userDets.UserName
+		} else {
+			userName = strconv.Itoa(int(userId))
+		}
+		msg := tgbotapi.NewMessage(userId, message)
+		if _, err := bot.Send(msg); err != nil {
+			log.Printf("Failed to send message to user %s: %v", userName, err)
 		}
 	}
 }
