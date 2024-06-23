@@ -78,6 +78,12 @@ make run
 
 We welcome contributions from the community. Please submit your pull requests with detailed descriptions of the changes and the problem they solve. Make sure to run tests and follow the code style of the project.
 
+## Code of Conduct
+
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at [gnana097@gmail.com, dharamendra.kariya@gmail.com] . All complaints will be reviewed and investigated promptly and fairly.
+
+All community leaders are obligated to respect the privacy and security of the reporter of any incident.
+
 ---
 
 Feel free to customize this template further based on your specific requirements and deployment details.
