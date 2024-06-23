@@ -85,6 +85,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 			go verifyVaultUnseal(bot, chatId)
 			resetUnsealState()
 		}
+		unsealTimer = nil
 	}
 }
 
@@ -190,6 +191,7 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 			providedKeys = make(map[string]int64)
 			setDefaultCommands(bot)
 		}
+		rekeyTimer = nil
 	}
 }
 

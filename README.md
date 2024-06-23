@@ -49,9 +49,10 @@ The Vault Engineer Bot is designed to simplify and automate the process of manag
    - `TELEGRAM_USERS`: Comma-separated list of authorized Telegram UserIds.
    - `VAULT_HOST`: The URL of your Vault instance.
 
-2. **Build and Run the Bot**: Deploy the bot by running the Go application. Ensure all dependencies are installed and the environment variables are correctly set.
+2. **Build and Run the Bot locally**: To run the bot locally. Ensure all dependencies are installed and the environment variables are correctly set.
 
 ```sh
+export LOCAL=true
 make build
 make run
 ```
