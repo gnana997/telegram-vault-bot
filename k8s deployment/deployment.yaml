@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: telegram-vault-bot
+  name: telegram-vault-bot
+  namespace: telegram-vault-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegram-vault-bot
+  template:
+    metadata:
+      labels:
+        app: telegram-vault-bot
+    spec:
+      containers:
+      - image: gnana977/telegram-vault-bot:latest ## Change this!
+        imagePullPolicy: Always
+        name: telegram-vault-bot
+        env: 
+        
+        - name: TELEGRAM_BOT_TOKEN
+          value: "xyz:a123d-56789qwer"
+
+        - name: VAULT_HOST
+          value: "http://localhost:8200"            
+
+        - name: VAULT_REQUIRED_KEYS
+          value: "2"  
+
+        - name: VAULT_TOTAL_KEYS
+          value: "4"
+
+        - name: TELEGRAM_USERS
+          value: useid1,useid2,useid3,useid4
+
+        - name: VAULT_TOKEN
+          value: "..."
+
+      restartPolicy: Always
+      
