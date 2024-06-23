@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	providedKeys = make(map[int64]string)
+	providedKeys = make(map[string]int64)
 )
 
 func resetBotState() {
@@ -76,7 +76,7 @@ func startRekeyTimer(bot *tgbotapi.BotAPI, chatId int64) {
 	if rekeyActive {
 		rekeyActive = false
 		rekeyKeys = make(map[int64]struct{})
-		providedKeys = make(map[int64]string)
+		providedKeys = make(map[string]int64)
 		broadcastMessage(bot, "Rekey process timed out. Please start the process again if needed.")
 		setDefaultCommands(bot)
 	}
@@ -143,7 +143,7 @@ func discardRekeyOperation() error {
 
 func resetUnsealState() {
 	unsealKeys = make(map[int64]struct{})
-	providedKeys = make(map[int64]string)
+	providedKeys = make(map[string]int64)
 	if unsealTimer != nil {
 		unsealTimer.Stop()
 		unsealTimer = nil
@@ -153,7 +153,7 @@ func resetUnsealState() {
 
 func resetRekeyState() {
 	rekeyKeys = make(map[int64]struct{})
-	providedKeys = make(map[int64]string)
+	providedKeys = make(map[string]int64)
 	if rekeyTimer != nil {
 		rekeyTimer.Stop()
 		rekeyTimer = nil
