@@ -49,7 +49,13 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 	}
 	unsealKey := match[1]
 	unsealKeys[userID] = struct{}{}
-	providedKeys[userID] = unsealKey
+	_, ok := providedKeys[unsealKey]
+	if !ok {
+		providedKeys[unsealKey] = userID
+	} else {
+		broadcastMessage(bot, fmt.Sprintf("Received same unseal key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+		return
+	}
 	sendMessage(bot, chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
 
 	if unsealTimer == nil {
@@ -64,7 +70,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 	if len(unsealKeys) >= requiredKeys {
 		unsealTimer.Stop()
 		keys := make([]string, 0, len(providedKeys))
-		for _, key := range providedKeys {
+		for key, _ := range providedKeys {
 			keys = append(keys, key)
 		}
 		err := unsealVault(keys)
@@ -81,7 +87,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 	}
 }
 
-func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int) {
+func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int, totalKeys int) {
 	log.Println("Starting handleRekeyInitCommand")
 
 	rekeyInProgress, err := isRekeyInProgress()
@@ -99,7 +105,7 @@ func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int
 		return
 	}
 
-	err = initiateRekeyProcess(4, 2) // Initialize with 4 keys and threshold of 2
+	err = initiateRekeyProcess(totalKeys, requiredKeys) // Initialize with 4 keys and threshold of 2
 	if err != nil {
 		log.Printf("Error initiating rekey process: %v", err)
 		rekeyActiveMutex.Unlock()
@@ -155,12 +161,19 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 	}
 	rekeyKey := match[1]
 	rekeyKeys[userID] = struct{}{}
-	providedKeys[userID] = rekeyKey
+	_, ok := providedKeys[rekeyKey]
+	if !ok {
+		providedKeys[rekeyKey] = userID
+	} else {
+		broadcastMessage(bot, fmt.Sprintf("Received same unseal key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+		return
+	}
+
 	broadcastMessage(bot, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
 
 	if len(rekeyKeys) >= requiredKeys {
 		keys := make([]string, 0, len(providedKeys))
-		for _, key := range providedKeys {
+		for key, _ := range providedKeys {
 			keys = append(keys, key)
 		}
 		err := handleRekeyCompletion(keys, bot, rekeyNonce)
@@ -168,11 +181,11 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 			log.Printf("Error updating rekey process: %v", err)
 			sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
 			rekeyKeys = make(map[int64]struct{})
-			providedKeys = make(map[int64]string)
+			providedKeys = make(map[string]int64)
 		} else {
 			broadcastMessage(bot, "Vault rekey process successfully completed.")
 			rekeyKeys = make(map[int64]struct{})
-			providedKeys = make(map[int64]string)
+			providedKeys = make(map[string]int64)
 			setDefaultCommands(bot)
 		}
 	}
@@ -258,7 +271,7 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
 	case "unseal":
 		handleUnsealCommand(bot, chatId, update, requiredKeys)
 	case "rekey_init":
-		handleRekeyInitCommand(bot, chatId, requiredKeys)
+		handleRekeyInitCommand(bot, chatId, requiredKeys, totalKeys)
 	case "rekey_init_keys":
 		handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
 	case "rekey_cancel":
