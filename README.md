@@ -83,7 +83,3 @@ We welcome contributions from the community. Please submit your pull requests wi
 Feel free to customize this template further based on your specific requirements and deployment details.
 
 ---
-
-PRs are welcomed
-
----
