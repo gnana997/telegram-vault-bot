@@ -31,20 +31,29 @@ The Vault Engineer Bot is designed to simplify and automate the process of manag
 5. **Verification and Updates**: The bot continuously verifies the Vault's status and provides updates to users, ensuring transparency and security throughout the process.
 6. **Timeout Mechanism**: The bot has a 10-minute window for users to provide the necessary keys for unseal and rekey operations. If the required keys are not provided within this window, the process times out and must be restarted.
 
+## How to Get User IDs from Telegram
+
+- To authorize users for the bot, you need their Telegram user IDs. Follow these steps to obtain them:
+  - Use the Bot "My User ID":
+  - In Telegram, search for the bot with the username @UserIDxBot.
+  - Start a chat with the bot.
+  - Use the command /id to fetch your Telegram user ID. The bot will reply with your user ID.
+
 ## Deployment
 
 1. **Environment Variables**: Ensure the following environment variables are set:
+
    - `TELEGRAM_BOT_TOKEN`: The token provided by BotFather for your Telegram bot.
    - `VAULT_REQUIRED_KEYS`: The number of keys required to unseal the Vault.
    - `VAULT_TOTAL_KEYS`: The total number of keys.
-   - `TELEGRAM_USERS`: Comma-separated list of authorized Telegram usernames.
+   - `TELEGRAM_USERS`: Comma-separated list of authorized Telegram UserIds.
    - `VAULT_HOST`: The URL of your Vault instance.
 
 2. **Build and Run the Bot**: Deploy the bot by running the Go application. Ensure all dependencies are installed and the environment variables are correctly set.
 
 ```sh
-go build -o bin/vault-engineer
-./bin/vault-engineer
+make build
+make run
 ```
 
 3. **Interaction**: Authorized users can interact with the bot via Telegram to manage the Vault's unseal and rekey processes.
@@ -52,6 +61,7 @@ go build -o bin/vault-engineer
 ## Edge Cases Considered
 
 - **Duplicate Keys from the Same User**: The bot ensures that a user can only provide one key per process. If a user tries to provide multiple keys, the bot discards the extra keys and asks for keys from other users.
+- **Same Key from Different Users**: If the same key is provided by different users, the bot will broadcast a message indicating a violation.
 - **Vault Already Unsealed**: The bot checks the Vault's status before accepting unseal keys to ensure it doesn't collect keys unnecessarily.
 - **Ongoing Rekey Process**: The bot checks if a rekey process is already in progress before initiating a new one, ensuring proper handling of concurrent operations.
 - **Timeout Handling**: If the required keys are not provided within 10 minutes, the bot resets the state and cancels the operation.
@@ -77,4 +87,3 @@ Feel free to customize this template further based on your specific requirements
 PRs are welcomed
 
 ---
-

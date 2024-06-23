@@ -54,6 +54,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 		providedKeys[unsealKey] = userID
 	} else {
 		broadcastMessage(bot, fmt.Sprintf("Received same unseal key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+		resetBotState()
 		return
 	}
 	sendMessage(bot, chatId, fmt.Sprintf("Received unseal key: %d/%d", len(unsealKeys), requiredKeys))
@@ -165,7 +166,8 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 	if !ok {
 		providedKeys[rekeyKey] = userID
 	} else {
-		broadcastMessage(bot, fmt.Sprintf("Received same unseal key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+		broadcastMessage(bot, fmt.Sprintf("Received same rekey key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+		resetBotState()
 		return
 	}
 
