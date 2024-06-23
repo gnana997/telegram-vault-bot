@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -289,8 +290,14 @@ func cancelRekeyProcess() error {
 func distributeKeys(newKeys *VaultRekeyUpdatedResponse, bot *tgbotapi.BotAPI) error {
 	userIdx := 0
 	for userId, userDets := range allowedUserIDs {
-		if userDets != nil && userIdx < len(newKeys.Keys) {
-			msg := tgbotapi.NewMessage(userId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userDets.UserName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
+		if userIdx < len(newKeys.Keys) {
+			userName := ""
+			if userDets != nil {
+				userName = userDets.UserName
+			} else {
+				userName = strconv.Itoa(int(userId))
+			}
+			msg := tgbotapi.NewMessage(userId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
 			if _, err := bot.Send(msg); err != nil {
 				log.Printf("Failed to send new key to user ID %d: %v", userId, err)
 			}
