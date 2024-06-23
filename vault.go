@@ -288,11 +288,11 @@ func cancelRekeyProcess() error {
 
 func distributeKeys(newKeys *VaultRekeyUpdatedResponse, bot *tgbotapi.BotAPI) error {
 	userIdx := 0
-	for userName, userDets := range allowedUserIDs {
+	for userId, userDets := range allowedUserIDs {
 		if userDets != nil && userIdx < len(newKeys.Keys) {
-			msg := tgbotapi.NewMessage(userDets.UserId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
+			msg := tgbotapi.NewMessage(userId, fmt.Sprintf("Hi %s, Your new key: %s\nYour new key (base64): %s", userDets.UserName, newKeys.Keys[userIdx], newKeys.KeysBase64[userIdx]))
 			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send new key to user ID %d: %v", userDets.UserId, err)
+				log.Printf("Failed to send new key to user ID %d: %v", userId, err)
 			}
 			userIdx++
 		} else if userIdx >= len(newKeys.Keys) {

@@ -37,7 +37,7 @@ func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Upd
 	}
 	vaultIsUnsealedLock.Unlock()
 
-	userID := update.Message.From.UserName
+	userID := update.Message.From.ID
 	if _, exists := unsealKeys[userID]; exists {
 		sendMessage(bot, chatId, "You have already provided an unseal key. Please ask other users to provide their keys.")
 		return
@@ -143,7 +143,7 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 		return
 	}
 
-	userID := update.Message.From.UserName
+	userID := update.Message.From.ID
 	if _, exists := rekeyKeys[userID]; exists {
 		sendMessage(bot, chatId, "You have already provided a rekey key. Please ask other users to provide their keys.")
 		return
@@ -167,12 +167,12 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 		if err != nil {
 			log.Printf("Error updating rekey process: %v", err)
 			sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
-			rekeyKeys = make(map[string]struct{})
-			providedKeys = make(map[string]string)
+			rekeyKeys = make(map[int64]struct{})
+			providedKeys = make(map[int64]string)
 		} else {
 			broadcastMessage(bot, "Vault rekey process successfully completed.")
-			rekeyKeys = make(map[string]struct{})
-			providedKeys = make(map[string]string)
+			rekeyKeys = make(map[int64]struct{})
+			providedKeys = make(map[int64]string)
 			setDefaultCommands(bot)
 		}
 	}
@@ -210,16 +210,16 @@ func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requir
 		}
 
 		log.Printf("Update: [%+v]", update.Message.From.UserName)
-		userID := update.Message.From.UserName
+		userID := update.Message.From.ID
 
 		val, ok := allowedUserIDs[userID]
 		if !ok {
 			sendMessage(bot, update.Message.Chat.ID, "You are not allowed to use this bot")
 			continue
-		} else if val == nil || val.UserId == 0 {
+		} else if val == nil || val.UserName == "" {
 			allowedUserIDs[userID] = &TelegramUserDetails{
 				LastUpdated: time.Now().Add(time.Duration(-5) * time.Minute),
-				UserId:      int64(update.Message.From.ID),
+				UserName:    update.Message.From.UserName,
 			}
 		}
 

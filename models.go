@@ -52,7 +52,7 @@ type VaultRekeyStatus struct {
 }
 
 type TelegramUserDetails struct {
-	UserId      int64
+	UserName    string
 	LastUpdated time.Time
 }
 

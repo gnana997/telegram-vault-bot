@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	providedKeys = make(map[string]string)
+	providedKeys = make(map[int64]string)
 )
 
 func resetBotState() {
@@ -31,11 +31,11 @@ func sendMessage(bot *tgbotapi.BotAPI, chatId int64, message string) {
 }
 
 func broadcastMessage(bot *tgbotapi.BotAPI, message string) {
-	for userName, userDets := range allowedUserIDs {
+	for userId, userDets := range allowedUserIDs {
 		if userDets != nil {
-			msg := tgbotapi.NewMessage(userDets.UserId, message)
+			msg := tgbotapi.NewMessage(userId, message)
 			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send message to user %s: %v", userName, err)
+				log.Printf("Failed to send message to user %s: %v", userDets.UserName, err)
 			}
 		}
 	}
@@ -75,8 +75,8 @@ func startRekeyTimer(bot *tgbotapi.BotAPI, chatId int64) {
 	rekeyActiveMutex.Lock()
 	if rekeyActive {
 		rekeyActive = false
-		rekeyKeys = make(map[string]struct{})
-		providedKeys = make(map[string]string)
+		rekeyKeys = make(map[int64]struct{})
+		providedKeys = make(map[int64]string)
 		broadcastMessage(bot, "Rekey process timed out. Please start the process again if needed.")
 		setDefaultCommands(bot)
 	}
@@ -87,12 +87,12 @@ func sendVaultStatusUpdate(bot *tgbotapi.BotAPI, statusChan <-chan string) {
 	for {
 		select {
 		case message := <-statusChan:
-			for _, t := range allowedUserIDs {
+			for id, t := range allowedUserIDs {
 				if t != nil && time.Since(t.LastUpdated) > 5*time.Minute {
 					t.LastUpdated = time.Now()
-					msg := tgbotapi.NewMessage(t.UserId, message)
+					msg := tgbotapi.NewMessage(id, message)
 					if _, err := bot.Send(msg); err != nil {
-						log.Printf("Failed to send message to user ID %d: %v", t.UserId, err)
+						log.Printf("Failed to send message to user ID %d: %v", t.UserName, err)
 					}
 				}
 			}
@@ -142,8 +142,8 @@ func discardRekeyOperation() error {
 }
 
 func resetUnsealState() {
-	unsealKeys = make(map[string]struct{})
-	providedKeys = make(map[string]string)
+	unsealKeys = make(map[int64]struct{})
+	providedKeys = make(map[int64]string)
 	if unsealTimer != nil {
 		unsealTimer.Stop()
 		unsealTimer = nil
@@ -152,8 +152,8 @@ func resetUnsealState() {
 }
 
 func resetRekeyState() {
-	rekeyKeys = make(map[string]struct{})
-	providedKeys = make(map[string]string)
+	rekeyKeys = make(map[int64]struct{})
+	providedKeys = make(map[int64]string)
 	if rekeyTimer != nil {
 		rekeyTimer.Stop()
 		rekeyTimer = nil
