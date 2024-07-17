@@ -83,7 +83,7 @@ func startRekeyTimer(bot *tgbotapi.BotAPI, chatId int64) {
 		rekeyKeys = make(map[int64]struct{})
 		providedKeys = make(map[string]int64)
 		broadcastMessage(bot, "Rekey process timed out. Please start the process again if needed.")
-		setDefaultCommands(bot)
+		setAllCommands(bot)
 	}
 	rekeyActiveMutex.Unlock()
 }

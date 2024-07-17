@@ -12,6 +12,7 @@ import (
 var (
 	unsealKeyFormat = regexp.MustCompile(`^/unseal\s+"(.+)"$`)
 	rekeyKeyFormat  = regexp.MustCompile(`^/rekey_init_keys\s+"(.+)"$`)
+	fernetKeyFormat = regexp.MustCompile(`^/fernet_key\s+"([A-Za-z0-9_-]{43,44}=?)"$`)
 	unsealTimer     *time.Timer
 	rekeyTimer      *time.Timer
 )
@@ -189,7 +190,7 @@ func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbot
 			broadcastMessage(bot, "Vault rekey process successfully completed.")
 			rekeyKeys = make(map[int64]struct{})
 			providedKeys = make(map[string]int64)
-			setDefaultCommands(bot)
+			setAllCommands(bot)
 		}
 		rekeyTimer = nil
 	}
@@ -217,7 +218,7 @@ func handleRekeyCancelCommand(bot *tgbotapi.BotAPI, chatId int64) {
 	resetRekeyState()
 	sendMessage(bot, chatId, "Rekey process has been canceled.")
 	broadcastMessage(bot, "Rekey process has been canceled.")
-	setDefaultCommands(bot)
+	setAllCommands(bot)
 }
 
 func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requiredKeys, totalKeys int) {
@@ -241,6 +242,10 @@ func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requir
 		}
 
 		if update.Message.IsCommand() {
+			if !fernetKeyProvided && update.Message.Command() != "fernet_key" {
+				sendMessage(bot, update.Message.Chat.ID, "Please provide the Fernet key using /fernet_key \"keydata\"")
+				continue
+			}
 			handleCommand(bot, update, requiredKeys, totalKeys)
 		} else {
 			sendMessage(bot, update.Message.Chat.ID, "Only commands are accepted. Use /help to see available commands.")
@@ -252,7 +257,9 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
 	chatId := update.Message.Chat.ID
 	switch update.Message.Command() {
 	case "start":
-		sendMessage(bot, chatId, "Welcome to the Vault Engineer Bot! Use /refresh to reset the bot state.")
+		sendMessage(bot, chatId, "Welcome to the Vault Engineer Bot! Please set the Fernet key using /fernet_key \"keydata\" to initialize the bot.")
+	case "fernet_key":
+		processFernetKeyCommand(bot, chatId, update.Message.From.UserName, update.Message.CommandArguments())
 	case "refresh":
 		resetBotState()
 		// Call functions to discard ongoing operations
@@ -285,12 +292,44 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
 	}
 }
 
-func setDefaultCommands(bot *tgbotapi.BotAPI) {
+func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
+    match := fernetKeyFormat.FindStringSubmatch(args)
+    if len(match) != 2 {
+        sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
+        return
+    }
+
+    if fernetKeyProvided {
+        sendMessage(bot, chatId, fmt.Sprintf("Fernet key has already been provided by %s", fernetKeyProvider))
+    } else {
+        fernetKey = match[1]
+        fernetKeyProvided = true
+        fernetKeyProvider = userName
+        sendMessage(bot, chatId, "Fernet key has been set successfully.")
+        broadcastMessage(bot, fmt.Sprintf("Fernet key has been provided by %s", fernetKeyProvider))
+        setAllCommands(bot)
+    }
+}
+
+func setInitialCommands(bot *tgbotapi.BotAPI) {
+	commands := []tgbotapi.BotCommand{
+		{Command: "start", Description: "Start the bot"},
+		{Command: "fernet_key", Description: "Set the Fernet key"},
+	}
+	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+	if err != nil {
+		log.Fatalf("Failed to set commands: %v", err)
+	}
+}
+
+func setAllCommands(bot *tgbotapi.BotAPI) {
 	commands := []tgbotapi.BotCommand{
 		{Command: "start", Description: "Start the bot"},
 		{Command: "vault_status", Description: "Get Vault status"},
 		{Command: "unseal", Description: "Provide an unseal key"},
 		{Command: "rekey_init", Description: "Initiate rekey process"},
+		{Command: "rekey_init_keys", Description: "Provide rekey key"},
+		{Command: "rekey_cancel", Description: "Cancel rekey process"},
 		{Command: "help", Description: "Show available commands"},
 		{Command: "refresh", Description: "Refresh the bot state"},
 	}
