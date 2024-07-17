@@ -90,3 +90,59 @@ All community leaders are obligated to respect the privacy and security of the r
 Feel free to customize this template further based on your specific requirements and deployment details.
 
 ---
+
+## Next Plan:
+
+- Ask for a Fernt key from user when the bot starts! Without this bot will not get initialized ( no commands other than /fernet_key will be working)
+
+- If it doesnt get fernet key then send the brodcast alert to all the users that I can not operate , please send the fernet!
+
+- Fernet key should be given like /fernet_key ""
+
+- Once it gets the fernet, initialize the bot and start working normally!
+
+- Now using this fernet key, store all the encrypted unseal keys using the given fernet key
+
+- Accept vault urls and name in key value pair , this variable VAULT_HOST="" should be discarded and replace it with the json file named vault_hosts.json
+
+   which should have key value pair like 
+
+   name: url
+   vault1: url1
+   vault2: url2
+   vault3: url3
+
+- Add handler /auto_unseal "True" which will enable the auto unsealing  - "False" will disable it
+
+- Bot sohuld check the vault status for all these given vaults ( configure in json )
+
+- If any vault is down then send a broadcast msg to all users that the "vault_name with the url" is down
+
+- And at the same time auto unseal it using the stored encrypted unseal keys ! obviously you should decrypte the key first!
+
+- Nice to have: /vault_init vault_name 
+
+   ( this handler will initialize the vault with the default total_key_share and require_key_share ) 
+
+   But before this check if the vault is initialized or not? then only proceed
+   
+   This will initialize the vault and store the encrypted unseal keys on disk ( at this location /data/unsealkeys/vaut_name )
+
+   This handler will return error if the given vault name is not found in configured json
+
+
+- Also all the vault data ( encrypted unseal keys will stored at /data/unsealkeys/vault_name )
+
+- /unseal command will be used as /unseal vault_name "" ( the vault name will be checked in configured json)
+
+- /rekey_init_keys will be used as /rekey_init_keys vault_name ""
+
+- Newely generated unseal keys by rekey process should update the encrpted data on disk (here /data/unsealkeys/vault_name)
+
+   And at the same should send the original each key to respective user ( which we already have ) 
+
+- /vault_status will be used as /vault_status vault_name 
+
+- Nice to have : If possible improve menu card 
+
+- Nice to have : If possible give /dashboard which shows all the vaults name in green if unsealed , in red if sealed 
