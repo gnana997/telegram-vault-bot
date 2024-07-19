@@ -93,13 +93,13 @@ Feel free to customize this template further based on your specific requirements
 
 ## Next Plan:
 
-- Ask for a Fernt key from user when the bot starts! Without this bot will not get initialized ( no commands other than /fernet_key will be working)
+- Ask for a Fernt key from user when the bot starts! Without this bot will not get initialized ( no commands other than /fernet_key will be working) - DONE
 
-- If it doesnt get fernet key then send the brodcast alert to all the users that I can not operate , please send the fernet!
+- If it doesnt get fernet key then send the brodcast alert to all the users that I can not operate , please send the fernet! - DONE
 
-- Fernet key should be given like /fernet_key ""
+- Fernet key should be given like /fernet_key "" - DONE
 
-- Fernet key should be given like /fernet_key "" ( only once by any one user ) if its there and someone else also give that key or any other key just say that fernte key has already been given by user_name
+- Fernet key should be given like /fernet_key "" ( only once by any one user ) if its there and someone else also give that key or any other key just say that fernte key has already been given by user_name - DONE
 
 - Now using this fernet key, store all the encrypted unseal keys using the given fernet key
 

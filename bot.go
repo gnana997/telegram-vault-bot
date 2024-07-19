@@ -255,42 +255,43 @@ func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requir
 }
 
 func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, totalKeys int) {
-	chatId := update.Message.Chat.ID
-	switch update.Message.Command() {
-	case "start":
-		sendMessage(bot, chatId, "Welcome to the Vault Engineer Bot! Please set the Fernet key using /fernet_key \"keydata\" to initialize the bot.")
-	case "fernet_key":
-		processFernetKeyCommand(bot, chatId, update.Message.From.UserName, update.Message.CommandArguments())
-	case "refresh":
-		resetBotState()
-		// Call functions to discard ongoing operations
-		discardUnsealOperation()
-		err := discardRekeyOperation()
-		if err != nil {
-			log.Printf("Error discarding rekey operation: %v", err)
-			sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded except the rekey process.")
-		} else {
-			sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded.")
-		}
-	case "vault_status":
-		statusMsg, err := getVaultStatusMessage()
-		if err != nil {
-			log.Printf("Error getting vault status: %v", err)
-		}
-		sendMessage(bot, chatId, statusMsg)
-	case "help":
-		sendMessage(bot, chatId, "Available commands: /start, /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh")
-	case "unseal":
-		handleUnsealCommand(bot, chatId, update, requiredKeys)
-	case "rekey_init":
-		handleRekeyInitCommand(bot, chatId, requiredKeys, totalKeys)
-	case "rekey_init_keys":
-		handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
-	case "rekey_cancel":
-		handleRekeyCancelCommand(bot, chatId)
-	default:
-		sendMessage(bot, chatId, "I don't know that command")
-	}
+    chatId := update.Message.Chat.ID
+    log.Printf("Handling command: %s with args: %s", update.Message.Command(), update.Message.CommandArguments()) // Debug log
+
+    switch update.Message.Command() {
+    case "start":
+        sendMessage(bot, chatId, "Welcome to the Vault Engineer Bot! Please set the Fernet key using /fernet_key \"keydata\" to initialize the bot.")
+    case "fernet_key":
+        processFernetKeyCommand(bot, chatId, update.Message.From.UserName, update.Message.CommandArguments())
+    case "refresh":
+        resetBotState()
+        discardUnsealOperation()
+        err := discardRekeyOperation()
+        if err != nil {
+            log.Printf("Error discarding rekey operation: %v", err)
+            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded except the rekey process.")
+        } else {
+            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded.")
+        }
+    case "vault_status":
+        statusMsg, err := getVaultStatusMessage()
+        if err != nil {
+            log.Printf("Error getting vault status: %v", err)
+        }
+        sendMessage(bot, chatId, statusMsg)
+    case "help":
+        sendMessage(bot, chatId, "Available commands: /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh")
+    case "unseal":
+        handleUnsealCommand(bot, chatId, update, requiredKeys)
+    case "rekey_init":
+        handleRekeyInitCommand(bot, chatId, requiredKeys, totalKeys)
+    case "rekey_init_keys":
+        handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
+    case "rekey_cancel":
+        handleRekeyCancelCommand(bot, chatId)
+    default:
+        sendMessage(bot, chatId, "I don't know that command")
+    }
 }
 
 func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
@@ -322,44 +323,43 @@ func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args 
 }
 
 func setInitialCommands(bot *tgbotapi.BotAPI) {
-	commands := []tgbotapi.BotCommand{
-		{Command: "start", Description: "Start the bot"},
-		{Command: "fernet_key", Description: "Set the Fernet key"},
-	}
-	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
-	if err != nil {
-		log.Fatalf("Failed to set commands: %v", err)
-	}
+    commands := []tgbotapi.BotCommand{
+        {Command: "start", Description: "Start the bot"},
+        {Command: "fernet_key", Description: "Set the Fernet key"},
+    }
+    _, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+    if err != nil {
+        log.Fatalf("Failed to set commands: %v", err)
+    }
 }
 
 func setAllCommands(bot *tgbotapi.BotAPI) {
-	commands := []tgbotapi.BotCommand{
-		{Command: "start", Description: "Start the bot"},
-		{Command: "vault_status", Description: "Get Vault status"},
-		{Command: "unseal", Description: "Provide an unseal key"},
-		{Command: "rekey_init", Description: "Initiate rekey process"},
-		{Command: "rekey_init_keys", Description: "Provide rekey key"},
-		{Command: "rekey_cancel", Description: "Cancel rekey process"},
-		{Command: "help", Description: "Show available commands"},
-		{Command: "refresh", Description: "Refresh the bot state"},
-	}
-	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
-	if err != nil {
-		log.Fatalf("Failed to set commands: %v", err)
-	}
+    commands := []tgbotapi.BotCommand{
+        {Command: "vault_status", Description: "Get Vault status"},
+        {Command: "unseal", Description: "Provide an unseal key"},
+        {Command: "rekey_init", Description: "Initiate rekey process"},
+        {Command: "rekey_init_keys", Description: "Provide rekey key"},
+        {Command: "rekey_cancel", Description: "Cancel rekey process"},
+        {Command: "help", Description: "Show available commands"},
+        {Command: "refresh", Description: "Refresh the bot state"},
+    }
+    _, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+    if err != nil {
+        log.Fatalf("Failed to set commands: %v", err)
+    }
 }
 
 func setRekeyCommands(bot *tgbotapi.BotAPI) {
-	commands := []tgbotapi.BotCommand{
-		{Command: "start", Description: "Start the bot"},
-		{Command: "vault_status", Description: "Get Vault status"},
-		{Command: "rekey_init_keys", Description: "Provide rekey key"},
-		{Command: "rekey_cancel", Description: "Cancel rekey process"},
-		{Command: "help", Description: "Show available commands"},
-		{Command: "refresh", Description: "Refresh the bot state"},
-	}
-	_, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
-	if err != nil {
-		log.Fatalf("Failed to set commands: %v", err)
-	}
+    commands := []tgbotapi.BotCommand{
+        {Command: "vault_status", Description: "Get Vault status"},
+        {Command: "rekey_init_keys", Description: "Provide rekey key"},
+        {Command: "rekey_cancel", Description: "Cancel rekey process"},
+        {Command: "help", Description: "Show available commands"},
+        {Command: "refresh", Description: "Refresh the bot state"},
+    }
+    _, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
+    if err != nil {
+        log.Fatalf("Failed to set commands: %v", err)
+    }
 }
+
