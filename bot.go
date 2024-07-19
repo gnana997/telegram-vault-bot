@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -293,8 +294,17 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
 }
 
 func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
-    match := fernetKeyFormat.FindStringSubmatch(args)
+    log.Printf("Processing Fernet key command with args: %s", args) // Debug log
+
+    args = strings.TrimSpace(args)
+    // Simplified regex to just capture the key part within double quotes
+    simplifiedFernetKeyFormat := regexp.MustCompile(`^"([A-Za-z0-9_-]+={0,2})"$`)
+    match := simplifiedFernetKeyFormat.FindStringSubmatch(args)
+    log.Printf("Match result: %v", match) // Debug log
+
+    // Check if the match contains exactly two elements (the whole match and the key)
     if len(match) != 2 {
+        log.Printf("Invalid format: %s", args) // Debug log
         sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
         return
     }
