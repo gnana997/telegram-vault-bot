@@ -308,7 +308,7 @@ func distributeKeys(newKeys *VaultRekeyUpdatedResponse, bot *tgbotapi.BotAPI) er
 		}
 	}
 
-	setDefaultCommands(bot)
+	setAllCommands(bot)
 	broadcastMessage(bot, "All users have received their new keys.")
 
 	return nil
