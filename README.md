@@ -101,7 +101,10 @@ Feel free to customize this template further based on your specific requirements
 
 - Fernet key should be given like /fernet_key "" ( only once by any one user ) if its there and someone else also give that key or any other key just say that fernte key has already been given by user_name - DONE
 
-- Now using this fernet key, store all the encrypted unseal keys using the given fernet key
+- Now using this fernet key, store all the encrypted unseal keys using the given fernet key - DONE
+
+- Add handler /auto_unseal "True" which will enable the auto unsealing  - "False" will disable it - DONE
+
 
 - Accept vault urls and name in key value pair , this variable VAULT_HOST="" should be discarded and replace it with the json file named vault_hosts.json
 
@@ -112,13 +115,11 @@ Feel free to customize this template further based on your specific requirements
    vault2: url2
    vault3: url3
 
-- Add handler /auto_unseal "True" which will enable the auto unsealing  - "False" will disable it
-
 - Bot sohuld check the vault status for all these given vaults ( configure in json )
 
 - If any vault is down then send a broadcast msg to all users that the "vault_name with the url" is down
 
-- And at the same time auto unseal it using the stored encrypted unseal keys ! obviously you should decrypte the key first!
+- And at the same time auto unseal it using the stored encrypted unseal keys ! obviously you should decrypte the key first! - DONE
 
 - Nice to have: /vault_init vault_name 
 
@@ -131,15 +132,15 @@ Feel free to customize this template further based on your specific requirements
    This handler will return error if the given vault name is not found in configured json
 
 
-- Also all the vault data ( encrypted unseal keys will stored at /data/unsealkeys/vault_name )
+- Also all the vault data ( encrypted unseal keys will stored at /data/unsealkeys/vault_name ) - DONE
 
 - /unseal command will be used as /unseal vault_name "" ( the vault name will be checked in configured json)
 
 - /rekey_init_keys will be used as /rekey_init_keys vault_name ""
 
-- Newely generated unseal keys by rekey process should update the encrpted data on disk (here /data/unsealkeys/vault_name)
+- Newely generated unseal keys by rekey process should update the encrpted data on disk (here /data/unsealkeys/vault_name) - DONE
 
-   And at the same should send the original each key to respective user ( which we already have ) 
+   And at the same should send the original each key to respective user ( which we already have )  - DONE
 
 - /vault_status will be used as /vault_status vault_name 
 

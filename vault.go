@@ -2,16 +2,115 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
+	"path/filepath"
+	"strconv" // Importing strconv package
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+func storeUnsealKeys(keys []string) error {
+	if !autoUnsealEnabled {
+		return nil
+	}
+
+	if !fernetKeyProvided {
+		return fmt.Errorf("Fernet key not provided")
+	}
+
+	encryptedKeys := make([]string, len(keys))
+	for i, key := range keys {
+		encryptedKey, err := encrypt([]byte(key), fernetKey)
+		if err != nil {
+			return err
+		}
+		encryptedKeys[i] = base64.StdEncoding.EncodeToString(encryptedKey)
+	}
+
+	data := []byte(strings.Join(encryptedKeys, "\n"))
+
+	// Get the path from the environment variable or use a default path
+	dir := os.Getenv("UNSEAL_KEYS_PATH")
+	if dir == "" {
+		dir = "./data" // Default path if environment variable is not set
+	}
+
+	log.Printf("Storing unseal keys in directory: %s", dir) // Debug log
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %v", dir, err)
+	}
+
+	log.Printf("Writing unseal keys to file: %s", filepath.Join(dir, "unsealkeys")) // Debug log
+
+	return ioutil.WriteFile(filepath.Join(dir, "unsealkeys"), data, 0644)
+}
+
+func loadUnsealKeys(bot *tgbotapi.BotAPI) ([]string, error) {
+	if !autoUnsealEnabled {
+		return nil, fmt.Errorf("Auto-Unseal is not enabled")
+	}
+
+	dir := os.Getenv("UNSEAL_KEYS_PATH")
+	if dir == "" {
+		dir = "./data" // Default path if environment variable is not set
+	}
+
+	log.Printf("Loading unseal keys from directory: %s", dir) // Debug log
+
+	data, err := ioutil.ReadFile(filepath.Join(dir, "unsealkeys"))
+	if err != nil {
+		return nil, fmt.Errorf("Error reading unseal keys file: %v", err)
+	}
+
+	encryptedKeys := strings.Split(string(data), "\n")
+	keys := make([]string, len(encryptedKeys))
+	for i, encryptedKey := range encryptedKeys {
+		decodedKey, err := base64.StdEncoding.DecodeString(encryptedKey)
+		if err != nil {
+			return nil, err
+		}
+		decryptedKey, err := decrypt(decodedKey, fernetKey)
+		if err != nil {
+			return nil, err
+		}
+		keys[i] = string(decryptedKey)
+	}
+
+	if err := unsealVault(keys); err != nil {
+		return nil, fmt.Errorf("auto unsealing failed: %v", err)
+	}
+
+	broadcastAutoUnsealCompleteNotification(bot)
+	return keys, nil
+}
+
+func broadcastAutoUnsealCompleteNotification(bot *tgbotapi.BotAPI) {
+	message := "Vault has been successfully auto-unsealed."
+	for userId := range allowedUserIDs {
+		msg := tgbotapi.NewMessage(userId, message)
+		if _, err := bot.Send(msg); err != nil {
+			log.Printf("Failed to send auto-unseal notification to user ID %d: %v", userId, err)
+		}
+	}
+}
+
+func sendAutoUnsealCompleteNotification(bot *tgbotapi.BotAPI, chatId int64) {
+	message := "Vault has been successfully auto-unsealed."
+	msg := tgbotapi.NewMessage(chatId, message)
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Failed to send auto-unseal notification: %v", err)
+	}
+}
 
 func checkVaultStatus() (*VaultHealth, error) {
 	vaultHealthURL := os.Getenv("VAULT_HOST") + "/v1/sys/health"
@@ -419,6 +518,10 @@ func handleRekeyCompletion(unsealKeys []string, bot *tgbotapi.BotAPI, nonce stri
 			return fmt.Errorf("error submitting rekey share %d: %v", i+1, err)
 		}
 		if newKeys != nil {
+			err = storeUnsealKeys(newKeys.Keys)
+			if err != nil {
+				return fmt.Errorf("error storing unseal keys: %v", err)
+			}
 			return distributeKeys(newKeys, bot)
 		}
 	}
@@ -434,6 +537,10 @@ func handleRekeyCompletion(unsealKeys []string, bot *tgbotapi.BotAPI, nonce stri
 		if err != nil {
 			broadcastMessage(bot, fmt.Sprintf("Error fetching new keys: %v", err))
 			return fmt.Errorf("error fetching new keys: %v", err)
+		}
+		err = storeUnsealKeys(newKeys.Keys)
+		if err != nil {
+			return fmt.Errorf("error storing unseal keys: %v", err)
 		}
 		return distributeKeys(newKeys, bot)
 	}

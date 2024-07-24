@@ -6,17 +6,84 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"crypto/aes"
+    "crypto/cipher"
+    "crypto/rand"
+    "io"
+    "encoding/base64"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var (
-	unsealKeyFormat = regexp.MustCompile(`^/unseal\s+"(.+)"$`)
-	rekeyKeyFormat  = regexp.MustCompile(`^/rekey_init_keys\s+"(.+)"$`)
-	fernetKeyFormat = regexp.MustCompile(`^/fernet_key\s+"([A-Za-z0-9_-]{43,44}=?)"$`)
-	unsealTimer     *time.Timer
-	rekeyTimer      *time.Timer
+    unsealKeyFormat    = regexp.MustCompile(`^/unseal\s+"(.+)"$`)
+    rekeyKeyFormat     = regexp.MustCompile(`^/rekey_init_keys\s+"(.+)"$`)
+    fernetKeyFormat    = regexp.MustCompile(`^/fernet_key\s+"([A-Za-z0-9_-]{43})"$`)
+    autoUnsealFormat   = regexp.MustCompile(`^/auto_unseal\s+"(True|False)"$`)
+    unsealTimer        *time.Timer
+    rekeyTimer         *time.Timer
 )
+
+func encrypt(data []byte, passphrase string) ([]byte, error) {
+    key, err := base64.URLEncoding.DecodeString(passphrase)
+    if err != nil {
+        return nil, fmt.Errorf("invalid base64 key: %v", err)
+    }
+    if len(key) != 32 {
+        return nil, fmt.Errorf("invalid key size: %d", len(key))
+    }
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return nil, err
+    }
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+        return nil, err
+    }
+    ciphertext := gcm.Seal(nonce, nonce, data, nil)
+    return ciphertext, nil
+}
+
+func decrypt(data []byte, passphrase string) ([]byte, error) {
+    key, err := base64.URLEncoding.DecodeString(passphrase)
+    if err != nil {
+        return nil, fmt.Errorf("invalid base64 key: %v", err)
+    }
+    if len(key) != 32 {
+        return nil, fmt.Errorf("invalid key size: %d", len(key))
+    }
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return nil, err
+    }
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    nonceSize := gcm.NonceSize()
+    nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+    plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+    if err != nil {
+        return nil, err
+    }
+    return plaintext, nil
+}
+
+// Add a new function to handle the auto-unseal command
+func handleAutoUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update) {
+    args := update.Message.CommandArguments()
+    if args == "True" {
+        autoUnsealEnabled = true
+        sendMessage(bot, chatId, "Auto-Unseal enabled. Future unseal keys will be encrypted and stored.")
+    } else {
+        autoUnsealEnabled = false
+        sendMessage(bot, chatId, "Auto-Unseal disabled.")
+    }
+}
 
 func handleUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update, requiredKeys int) {
 	vaultStatus, err := checkVaultStatus()
@@ -134,67 +201,67 @@ func handleRekeyInitCommand(bot *tgbotapi.BotAPI, chatId int64, requiredKeys int
 }
 
 func handleRekeyInitKeysCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update, requiredKeys, totalKeys int) {
-	log.Println("Starting handleRekeyInitKeysCommand")
+    log.Println("Starting handleRekeyInitKeysCommand")
 
-	rekeyInProgress, err := isRekeyInProgress()
-	if err != nil {
-		sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
-		return
-	}
+    rekeyInProgress, err := isRekeyInProgress()
+    if err != nil {
+        sendMessage(bot, chatId, "Error checking rekey status. Please try again later.")
+        return
+    }
 
-	rekeyActiveMutex.Lock()
-	defer rekeyActiveMutex.Unlock()
+    rekeyActiveMutex.Lock()
+    defer rekeyActiveMutex.Unlock()
 
-	log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
+    log.Printf("Rekey in progress: %v, Rekey active: %v", rekeyInProgress, rekeyActive)
 
-	if !rekeyInProgress {
-		rekeyActive = false
-		sendMessage(bot, chatId, "Rekey process has not been started yet. Please initiate the rekey process using /rekey_init.")
-		return
-	}
+    if !rekeyInProgress {
+        rekeyActive = false
+        sendMessage(bot, chatId, "Rekey process has not been started yet. Please initiate the rekey process using /rekey_init.")
+        return
+    }
 
-	userID := update.Message.From.ID
-	if _, exists := rekeyKeys[userID]; exists {
-		sendMessage(bot, chatId, "You have already provided a rekey key. Please ask other users to provide their keys.")
-		return
-	}
-	match := rekeyKeyFormat.FindStringSubmatch(update.Message.Text)
-	if len(match) != 2 {
-		sendMessage(bot, chatId, "Invalid rekey key format. Please provide a valid rekey key in the format: /rekey_init_keys \"key\".")
-		return
-	}
-	rekeyKey := match[1]
-	rekeyKeys[userID] = struct{}{}
-	_, ok := providedKeys[rekeyKey]
-	if !ok {
-		providedKeys[rekeyKey] = userID
-	} else {
-		broadcastMessage(bot, fmt.Sprintf("Received same rekey key. Please talk to your Administrator as this seems like a violation of your vault token security"))
-		resetBotState()
-		return
-	}
+    userID := update.Message.From.ID
+    if _, exists := rekeyKeys[userID]; exists {
+        sendMessage(bot, chatId, "You have already provided a rekey key. Please ask other users to provide their keys.")
+        return
+    }
+    match := rekeyKeyFormat.FindStringSubmatch(update.Message.Text)
+    if len(match) != 2 {
+        sendMessage(bot, chatId, "Invalid rekey key format. Please provide a valid rekey key in the format: /rekey_init_keys \"key\".")
+        return
+    }
+    rekeyKey := match[1]
+    rekeyKeys[userID] = struct{}{}
+    _, ok := providedKeys[rekeyKey]
+    if !ok {
+        providedKeys[rekeyKey] = userID
+    } else {
+        broadcastMessage(bot, fmt.Sprintf("Received same rekey key. Please talk to your Administrator as this seems like a violation of your vault token security"))
+        resetBotState()
+        return
+    }
 
-	broadcastMessage(bot, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
+    broadcastMessage(bot, fmt.Sprintf("Received rekey key: %d/%d", len(rekeyKeys), requiredKeys))
 
-	if len(rekeyKeys) >= requiredKeys {
-		keys := make([]string, 0, len(providedKeys))
-		for key, _ := range providedKeys {
-			keys = append(keys, key)
-		}
-		err := handleRekeyCompletion(keys, bot, rekeyNonce)
-		if err != nil {
-			log.Printf("Error updating rekey process: %v", err)
-			sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
-			rekeyKeys = make(map[int64]struct{})
-			providedKeys = make(map[string]int64)
-		} else {
-			broadcastMessage(bot, "Vault rekey process successfully completed.")
-			rekeyKeys = make(map[int64]struct{})
-			providedKeys = make(map[string]int64)
-			setAllCommands(bot)
-		}
-		rekeyTimer = nil
-	}
+    if len(rekeyKeys) >= requiredKeys {
+        keys := make([]string, 0, len(providedKeys))
+        for key, _ := range providedKeys {
+            keys = append(keys, key)
+        }
+        err := handleRekeyCompletion(keys, bot, rekeyNonce) // Use the rekeyNonce
+        if err != nil {
+            log.Printf("Error updating rekey process: %v", err)
+            sendMessage(bot, chatId, fmt.Sprintf("Error updating rekey process. Please send the rekey keys again. Error: %v", err))
+            rekeyKeys = make(map[int64]struct{})
+            providedKeys = make(map[string]int64)
+        } else {
+            broadcastMessage(bot, "Vault rekey process successfully completed.")
+            rekeyKeys = make(map[int64]struct{})
+            providedKeys = make(map[string]int64)
+            setAllCommands(bot)
+        }
+        rekeyTimer = nil
+    }
 }
 
 func handleRekeyCancelCommand(bot *tgbotapi.BotAPI, chatId int64) {
@@ -280,7 +347,7 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
         }
         sendMessage(bot, chatId, statusMsg)
     case "help":
-        sendMessage(bot, chatId, "Available commands: /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh")
+        sendMessage(bot, chatId, "Available commands: /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh, /auto_unseal")
     case "unseal":
         handleUnsealCommand(bot, chatId, update, requiredKeys)
     case "rekey_init":
@@ -289,10 +356,40 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, t
         handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
     case "rekey_cancel":
         handleRekeyCancelCommand(bot, chatId)
+    case "auto_unseal":
+        handleAutoUnsealCommand(bot, chatId, update)
     default:
         sendMessage(bot, chatId, "I don't know that command")
     }
 }
+
+// func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
+//     log.Printf("Processing Fernet key command with args: %s", args) // Debug log
+
+//     args = strings.TrimSpace(args)
+//     // Simplified regex to just capture the key part within double quotes
+//     simplifiedFernetKeyFormat := regexp.MustCompile(`^"([A-Za-z0-9_-]+={0,2})"$`)
+//     match := simplifiedFernetKeyFormat.FindStringSubmatch(args)
+//     log.Printf("Match result: %v", match) // Debug log
+
+//     // Check if the match contains exactly two elements (the whole match and the key)
+//     if len(match) != 2 {
+//         log.Printf("Invalid format: %s", args) // Debug log
+//         sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
+//         return
+//     }
+    
+//     if fernetKeyProvided {
+//         sendMessage(bot, chatId, fmt.Sprintf("Fernet key has already been provided by %s", fernetKeyProvider))
+//     } else {
+//         fernetKey = match[1]
+//         fernetKeyProvided = true
+//         fernetKeyProvider = userName
+//         sendMessage(bot, chatId, "Fernet key has been set successfully.")
+//         broadcastMessage(bot, fmt.Sprintf("Fernet key has been provided by %s", fernetKeyProvider))
+//         setAllCommands(bot)
+//     }
+// }
 
 func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
     log.Printf("Processing Fernet key command with args: %s", args) // Debug log
@@ -307,6 +404,13 @@ func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args 
     if len(match) != 2 {
         log.Printf("Invalid format: %s", args) // Debug log
         sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
+        return
+    }
+
+    decodedKey, err := base64.URLEncoding.DecodeString(match[1])
+    if err != nil || len(decodedKey) != 32 {
+        log.Printf("Invalid Fernet key: %s", args) // Debug log
+        sendMessage(bot, chatId, `Invalid Fernet key. Please provide a valid base64 encoded Fernet key.`)
         return
     }
 
@@ -342,6 +446,7 @@ func setAllCommands(bot *tgbotapi.BotAPI) {
         {Command: "rekey_cancel", Description: "Cancel rekey process"},
         {Command: "help", Description: "Show available commands"},
         {Command: "refresh", Description: "Refresh the bot state"},
+        {Command: "auto_unseal", Description: "Enable or disable auto-unseal"},
     }
     _, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
     if err != nil {
