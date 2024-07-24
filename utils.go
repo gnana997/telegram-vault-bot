@@ -105,22 +105,35 @@ func sendVaultStatusUpdate(bot *tgbotapi.BotAPI, statusChan <-chan string) {
 	}
 }
 
-func pollVaultEverySec(statusChan chan string) {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
+func pollVaultEverySec(statusChan chan string, bot *tgbotapi.BotAPI) {
+    ticker := time.NewTicker(1 * time.Minute)
+    defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			res, err := checkVaultStatus()
-			if err != nil {
-				statusChan <- fmt.Sprintf("Vault is down and will restart soon. Here is the error: %+v", err)
-			}
-			if res.Sealed == true {
-				statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %t and Sealed is %t", res.Initialized, res.Sealed)
-			}
-		}
-	}
+    for {
+        select {
+        case <-ticker.C:
+            res, err := checkVaultStatus()
+            if err != nil {
+                statusChan <- fmt.Sprintf("Vault is down and will restart soon. Here is the error: %+v", err)
+            }
+            if res.Sealed == true {
+                if autoUnsealEnabled {
+                    keys, err := loadUnsealKeys(bot) // Pass the bot parameter
+                    if err != nil {
+                        log.Printf("Error loading unseal keys: %v", err)
+                        continue
+                    }
+                    err = unsealVault(keys)
+                    if err != nil {
+                        log.Printf("Error auto-unsealing Vault: %v", err)
+                    } else {
+                        log.Println("Vault auto-unsealed successfully.")
+                    }
+                }
+                statusChan <- fmt.Sprintf("Vault Restarted. Initialised is %t and Sealed is %t", res.Initialized, res.Sealed)
+            }
+        }
+    }
 }
 
 func discardUnsealOperation() {

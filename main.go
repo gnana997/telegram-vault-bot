@@ -23,44 +23,52 @@ var (
     fernetKey           string
     fernetKeyProvided   bool
     fernetKeyProvider   string
+    autoUnsealEnabled bool 
 )
 
 func main() {
-    if os.Getenv("LOCAL") == "true" {
-        err := godotenv.Load()
-        if err != nil {
-            log.Panic("Error loading .env file")
-        }
-    }
+	if os.Getenv("LOCAL") == "true" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Panic("Error loading .env file")
+		}
+	}
 
-    botToken, requiredKeys, totalKeys, users := validateEnvVars()
+	botToken, requiredKeys, totalKeys, users := validateEnvVars()
 
-    for _, user := range users {
-        allowedUserIDs[user] = nil
-    }
+	for _, user := range users {
+		allowedUserIDs[user] = nil
+	}
 
-    statusChan := make(chan string)
+	statusChan := make(chan string)
 
-    bot, err := tgbotapi.NewBotAPI(botToken)
-    if err != nil {
-        log.Panic(err)
-    }
+	bot, err := tgbotapi.NewBotAPI(botToken)
+	if err != nil {
+		log.Panic(err)
+	}
 
-    bot.Debug = true
-    log.Printf("Authorized on account %s", bot.Self.UserName)
+	bot.Debug = true
+	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-    u := tgbotapi.NewUpdate(0)
-    u.Timeout = 60
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
 
-    updates := bot.GetUpdatesChan(u)
+	updates := bot.GetUpdatesChan(u)
 
-    setInitialCommands(bot)
+	// Check if the Fernet key is already set and initialize the bot
+	if fernetKeyProvided {
+		setAllCommands(bot)
+		log.Println("Bot initialized with existing Fernet key. All commands are now available.")
+	} else {
+		setInitialCommands(bot)
+		log.Println("Waiting for Fernet key to initialize the bot.")
+	}
 
-    go pollVaultEverySec(statusChan)
-    go sendVaultStatusUpdate(bot, statusChan)
-    go broadcastFernetKeyNotSet(bot)
+	go pollVaultEverySec(statusChan, bot) // Updated function signature
+	go sendVaultStatusUpdate(bot, statusChan)
+	go broadcastFernetKeyNotSet(bot)
 
-    handleUpdates(bot, updates, requiredKeys, totalKeys)
+	handleUpdates(bot, updates, requiredKeys, totalKeys)
 }
 
 func validateEnvVars() (string, int, int, []int64) {
@@ -109,5 +117,3 @@ func broadcastFernetKeyNotSet(bot *tgbotapi.BotAPI) {
         }
     }
 }
-
-
