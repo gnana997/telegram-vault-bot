@@ -37,7 +37,7 @@ The Vault Engineer Bot is designed to simplify and automate the process of manag
 
 ### Fernet Key
 
-The bot requires a Fernet key to encrypt and decrypt unseal keys securely. The key must be a base64 URL-encoded 32-byte key. This key is set once using the `/fernet_key "keydata"` command, and the bot will use it for all encryption and decryption operations.
+The bot requires a Fernet key to encrypt and decrypt unseal keys securely. The key must be a base64 encoded 32-byte key. This key is set once using the `/fernet_key "keydata"` command, and the bot will use it for all encryption and decryption operations.
 
 To set the Fernet key:
 ```sh
