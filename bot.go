@@ -1,28 +1,81 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"regexp"
-	"strings"
-	"time"
-	"crypto/aes"
+    "crypto/aes"
     "crypto/cipher"
     "crypto/rand"
-    "io"
+    "crypto/sha256"
     "encoding/base64"
+    "fmt"
+    "io"
+    "log"
+    "regexp"
+    "time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+    tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 var (
     unsealKeyFormat    = regexp.MustCompile(`^/unseal\s+"(.+)"$`)
     rekeyKeyFormat     = regexp.MustCompile(`^/rekey_init_keys\s+"(.+)"$`)
-    fernetKeyFormat    = regexp.MustCompile(`^/fernet_key\s+"([A-Za-z0-9_-]{43})"$`)
     autoUnsealFormat   = regexp.MustCompile(`^/auto_unseal\s+"(True|False)"$`)
     unsealTimer        *time.Timer
     rekeyTimer         *time.Timer
+    fernetKeyGenerated bool
+    
+    passwordProvided bool
+
 )
+
+var (
+    adminPasswords     = make(map[int64]string) // Map user ID to password to ensure uniqueness
+    requiredPasswords  = 4                      // Total required unique passwords
+)
+
+func handleProvidePasswordCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update) {
+    userID := update.Message.From.ID
+    password := update.Message.CommandArguments()
+
+    if password == "" {
+        sendMessage(bot, chatId, "Please provide a password with the command.")
+        return
+    }
+
+    // Check if user already provided a password
+    if _, exists := adminPasswords[userID]; exists {
+        sendMessage(bot, chatId, "You have already submitted your password. Please wait for others to provide theirs.")
+        return
+    }
+
+    // Store unique user's password
+    adminPasswords[userID] = password
+    sendMessage(bot, chatId, fmt.Sprintf("Password received. Total passwords collected: %d/%d", len(adminPasswords), requiredPasswords))
+
+    // Check if required passwords are collected
+    if len(adminPasswords) == requiredPasswords {
+        generateFernetKey()
+        fernetKeyGenerated = true
+        sendMessage(bot, chatId, "Fernet key generated successfully from collected passwords.")
+        broadcastMessage(bot, "All required passwords have been collected and the Fernet key is generated.")
+    }
+}
+
+func generateFernetKey() {
+    hashedParts := make([][32]byte, len(adminPasswords))
+    for i, password := range adminPasswords {
+        hashedParts[i] = sha256.Sum256([]byte(password))
+    }
+
+    var combinedKey [32]byte
+    for i := 0; i < 32; i++ {
+        for _, part := range hashedParts {
+            combinedKey[i] ^= part[i]
+        }
+    }
+
+    fernetKey = base64.URLEncoding.EncodeToString(combinedKey[:])
+    adminPasswords = nil
+}
 
 func encrypt(data []byte, passphrase string) ([]byte, error) {
     key, err := base64.URLEncoding.DecodeString(passphrase)
@@ -73,7 +126,6 @@ func decrypt(data []byte, passphrase string) ([]byte, error) {
     return plaintext, nil
 }
 
-// Add a new function to handle the auto-unseal command
 func handleAutoUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi.Update) {
     args := update.Message.CommandArguments()
     if args == "True" {
@@ -82,6 +134,48 @@ func handleAutoUnsealCommand(bot *tgbotapi.BotAPI, chatId int64, update tgbotapi
     } else {
         autoUnsealEnabled = false
         sendMessage(bot, chatId, "Auto-Unseal disabled.")
+    }
+}
+
+func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, totalKeys int) {
+    chatId := update.Message.Chat.ID
+    log.Printf("Handling command: %s with args: %s", update.Message.Command(), update.Message.CommandArguments())
+
+    switch update.Message.Command() {
+    case "start":
+        sendMessage(bot, chatId, "Welcome to the Vault Bot! Please provide your password using /password.")
+    case "password":
+        handleProvidePasswordCommand(bot, chatId, update)
+    case "auto_unseal":
+        handleAutoUnsealCommand(bot, chatId, update)
+    case "vault_status":
+        statusMsg, err := getVaultStatusMessage()
+        if err != nil {
+            log.Printf("Error getting vault status: %v", err)
+        }
+        sendMessage(bot, chatId, statusMsg)
+    case "help":
+        sendMessage(bot, chatId, "Available commands: /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh, /auto_unseal")
+    case "unseal":
+        handleUnsealCommand(bot, chatId, update, requiredKeys)
+    case "rekey_init":
+        handleRekeyInitCommand(bot, chatId, requiredKeys, totalKeys)
+    case "rekey_init_keys":
+        handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
+    case "rekey_cancel":
+        handleRekeyCancelCommand(bot, chatId)
+    case "refresh":
+        resetBotState()
+        discardUnsealOperation()
+        err := discardRekeyOperation()
+        if err != nil {
+            log.Printf("Error discarding rekey operation: %v", err)
+            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded except the rekey process.")
+        } else {
+            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded.")
+        }
+    default:
+        sendMessage(bot, chatId, "I don't know that command")
     }
 }
 
@@ -310,8 +404,8 @@ func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requir
 		}
 
 		if update.Message.IsCommand() {
-			if !fernetKeyProvided && update.Message.Command() != "fernet_key" {
-				sendMessage(bot, update.Message.Chat.ID, "Please provide the Fernet key using /fernet_key \"keydata\"")
+			if !passwordProvided && update.Message.Command() != "password" {
+				sendMessage(bot, update.Message.Chat.ID, "Please provide the password using /password \"your_password\"")
 				continue
 			}
 			handleCommand(bot, update, requiredKeys, totalKeys)
@@ -321,115 +415,11 @@ func handleUpdates(bot *tgbotapi.BotAPI, updates tgbotapi.UpdatesChannel, requir
 	}
 }
 
-func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, requiredKeys, totalKeys int) {
-    chatId := update.Message.Chat.ID
-    log.Printf("Handling command: %s with args: %s", update.Message.Command(), update.Message.CommandArguments()) // Debug log
-
-    switch update.Message.Command() {
-    case "start":
-        sendMessage(bot, chatId, "Welcome to the Vault Engineer Bot! Please set the Fernet key using /fernet_key \"keydata\" to initialize the bot.")
-    case "fernet_key":
-        processFernetKeyCommand(bot, chatId, update.Message.From.UserName, update.Message.CommandArguments())
-    case "refresh":
-        resetBotState()
-        discardUnsealOperation()
-        err := discardRekeyOperation()
-        if err != nil {
-            log.Printf("Error discarding rekey operation: %v", err)
-            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded except the rekey process.")
-        } else {
-            sendMessage(bot, chatId, "Bot has been refreshed. All ongoing processes have been discarded.")
-        }
-    case "vault_status":
-        statusMsg, err := getVaultStatusMessage()
-        if err != nil {
-            log.Printf("Error getting vault status: %v", err)
-        }
-        sendMessage(bot, chatId, statusMsg)
-    case "help":
-        sendMessage(bot, chatId, "Available commands: /vault_status, /help, /unseal, /rekey_init, /rekey_init_keys, /rekey_cancel, /refresh, /auto_unseal")
-    case "unseal":
-        handleUnsealCommand(bot, chatId, update, requiredKeys)
-    case "rekey_init":
-        handleRekeyInitCommand(bot, chatId, requiredKeys, totalKeys)
-    case "rekey_init_keys":
-        handleRekeyInitKeysCommand(bot, chatId, update, requiredKeys, totalKeys)
-    case "rekey_cancel":
-        handleRekeyCancelCommand(bot, chatId)
-    case "auto_unseal":
-        handleAutoUnsealCommand(bot, chatId, update)
-    default:
-        sendMessage(bot, chatId, "I don't know that command")
-    }
-}
-
-// func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
-//     log.Printf("Processing Fernet key command with args: %s", args) // Debug log
-
-//     args = strings.TrimSpace(args)
-//     // Simplified regex to just capture the key part within double quotes
-//     simplifiedFernetKeyFormat := regexp.MustCompile(`^"([A-Za-z0-9_-]+={0,2})"$`)
-//     match := simplifiedFernetKeyFormat.FindStringSubmatch(args)
-//     log.Printf("Match result: %v", match) // Debug log
-
-//     // Check if the match contains exactly two elements (the whole match and the key)
-//     if len(match) != 2 {
-//         log.Printf("Invalid format: %s", args) // Debug log
-//         sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
-//         return
-//     }
-    
-//     if fernetKeyProvided {
-//         sendMessage(bot, chatId, fmt.Sprintf("Fernet key has already been provided by %s", fernetKeyProvider))
-//     } else {
-//         fernetKey = match[1]
-//         fernetKeyProvided = true
-//         fernetKeyProvider = userName
-//         sendMessage(bot, chatId, "Fernet key has been set successfully.")
-//         broadcastMessage(bot, fmt.Sprintf("Fernet key has been provided by %s", fernetKeyProvider))
-//         setAllCommands(bot)
-//     }
-// }
-
-func processFernetKeyCommand(bot *tgbotapi.BotAPI, chatId int64, userName, args string) {
-    log.Printf("Processing Fernet key command with args: %s", args) // Debug log
-
-    args = strings.TrimSpace(args)
-    // Simplified regex to just capture the key part within double quotes
-    simplifiedFernetKeyFormat := regexp.MustCompile(`^"([A-Za-z0-9_-]+={0,2})"$`)
-    match := simplifiedFernetKeyFormat.FindStringSubmatch(args)
-    log.Printf("Match result: %v", match) // Debug log
-
-    // Check if the match contains exactly two elements (the whole match and the key)
-    if len(match) != 2 {
-        log.Printf("Invalid format: %s", args) // Debug log
-        sendMessage(bot, chatId, `Invalid Fernet key format. Please provide a valid Fernet key in the format: /fernet_key "YourFernetKeyHere".`)
-        return
-    }
-
-    decodedKey, err := base64.URLEncoding.DecodeString(match[1])
-    if err != nil || len(decodedKey) != 32 {
-        log.Printf("Invalid Fernet key: %s", args) // Debug log
-        sendMessage(bot, chatId, `Invalid Fernet key. Please provide a valid base64 encoded Fernet key.`)
-        return
-    }
-
-    if fernetKeyProvided {
-        sendMessage(bot, chatId, fmt.Sprintf("Fernet key has already been provided by %s", fernetKeyProvider))
-    } else {
-        fernetKey = match[1]
-        fernetKeyProvided = true
-        fernetKeyProvider = userName
-        sendMessage(bot, chatId, "Fernet key has been set successfully.")
-        broadcastMessage(bot, fmt.Sprintf("Fernet key has been provided by %s", fernetKeyProvider))
-        setAllCommands(bot)
-    }
-}
-
 func setInitialCommands(bot *tgbotapi.BotAPI) {
     commands := []tgbotapi.BotCommand{
         {Command: "start", Description: "Start the bot"},
-        {Command: "fernet_key", Description: "Set the Fernet key"},
+        {Command: "password", Description: "Provide a password for key generation"},
+        {Command: "auto_unseal", Description: "Enable or disable auto-unseal"},
     }
     _, err := bot.Request(tgbotapi.NewSetMyCommands(commands...))
     if err != nil {
@@ -467,4 +457,3 @@ func setRekeyCommands(bot *tgbotapi.BotAPI) {
         log.Fatalf("Failed to set commands: %v", err)
     }
 }
-
