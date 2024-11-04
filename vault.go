@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv" // Importing strconv package
+	"strconv" 
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -37,20 +37,18 @@ func storeUnsealKeys(keys []string) error {
 
 	data := []byte(strings.Join(encryptedKeys, "\n"))
 
-	// Get the path from the environment variable or use a default path
 	dir := os.Getenv("UNSEAL_KEYS_PATH")
 	if dir == "" {
-		dir = "./data" // Default path if environment variable is not set
+		dir = "./data" 
 	}
 
-	log.Printf("Storing unseal keys in directory: %s", dir) // Debug log
+	log.Printf("Storing unseal keys in directory: %s", dir) 
 
-	// Ensure the directory exists
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %v", dir, err)
 	}
 
-	log.Printf("Writing unseal keys to file: %s", filepath.Join(dir, "unsealkeys")) // Debug log
+	log.Printf("Writing unseal keys to file: %s", filepath.Join(dir, "unsealkeys")) 
 
 	return ioutil.WriteFile(filepath.Join(dir, "unsealkeys"), data, 0644)
 }
@@ -62,10 +60,10 @@ func loadUnsealKeys(bot *tgbotapi.BotAPI) ([]string, error) {
 
 	dir := os.Getenv("UNSEAL_KEYS_PATH")
 	if dir == "" {
-		dir = "./data" // Default path if environment variable is not set
+		dir = "./data" 
 	}
 
-	log.Printf("Loading unseal keys from directory: %s", dir) // Debug log
+	log.Printf("Loading unseal keys from directory: %s", dir) 
 
 	data, err := ioutil.ReadFile(filepath.Join(dir, "unsealkeys"))
 	if err != nil {
@@ -103,7 +101,6 @@ func broadcastAutoUnsealCompleteNotification(bot *tgbotapi.BotAPI) {
 		}
 	}
 }
-
 func sendAutoUnsealCompleteNotification(bot *tgbotapi.BotAPI, chatId int64) {
 	message := "Vault has been successfully auto-unsealed."
 	msg := tgbotapi.NewMessage(chatId, message)
@@ -283,7 +280,6 @@ func submitRekeyShare(unsealKey, nonce string, bot *tgbotapi.BotAPI) (*VaultReke
 
 	log.Printf("Submitted rekey share: %s", body)
 
-	// Check if rekey is complete
 	var rekeyStatus VaultRekeyUpdatedResponse
 	err = json.Unmarshal(body, &rekeyStatus)
 	if err != nil {
@@ -349,14 +345,14 @@ func submitFinalRekeyShare(lastKey string) (*VaultRekeyUpdatedResponse, error) {
 
 func cancelRekeyProcess() error {
 	vaultRekeyCancelURL := os.Getenv("VAULT_HOST") + "/v1/sys/rekey/init"
-	vaultToken := os.Getenv("VAULT_TOKEN") // Get the Vault token from the environment
+	vaultToken := os.Getenv("VAULT_TOKEN")
 
-	req, err := http.NewRequest("DELETE", vaultRekeyCancelURL, nil) // Corrected to DELETE as per the API doc
+	req, err := http.NewRequest("DELETE", vaultRekeyCancelURL, nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("X-Vault-Token", vaultToken) // Set the Vault token header
+	req.Header.Set("X-Vault-Token", vaultToken)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -365,7 +361,6 @@ func cancelRekeyProcess() error {
 	}
 	defer resp.Body.Close()
 
-	// Check if the status code is 204 No Content
 	if resp.StatusCode == http.StatusNoContent {
 		log.Println("Rekey process canceled successfully.")
 		return nil
@@ -526,7 +521,6 @@ func handleRekeyCompletion(unsealKeys []string, bot *tgbotapi.BotAPI, nonce stri
 		}
 	}
 
-	// Fetch the rekey status again after submitting all keys
 	rekeyStatus, err := getRekeyStatus()
 	if err != nil {
 		return fmt.Errorf("error checking rekey status: %v", err)

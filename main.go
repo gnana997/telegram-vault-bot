@@ -112,7 +112,7 @@ func broadcastFernetKeyNotSet(bot *tgbotapi.BotAPI) {
         select {
         case <-ticker.C:
             if (!fernetKeyProvided) {
-                broadcastMessage(bot, "Bot not initialized. Please provide the Fernet key using /fernet_key \"YourFernetKeyHere\"")
+                broadcastMessage(bot, "Bot setup is incomplete. Please ensure all admin passwords are provided to generate the Fernet key and initialize the bot.")
             }
         }
     }
